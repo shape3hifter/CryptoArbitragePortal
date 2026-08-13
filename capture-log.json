@@ -1,0 +1,27 @@
+{
+  "reference_date": "2026-08-13",
+  "reference_time": "21:00",
+  "timezone": "America/Sao_Paulo",
+  "executed_at": "2026-08-13T12:45:24.833216-03:00",
+  "delay_minutes": -494.59,
+  "status": "late",
+  "assets": [
+    {
+      "symbol": "ADA",
+      "cmc_id": 2010
+    },
+    {
+      "symbol": "NIGHT",
+      "cmc_id": 39064
+    },
+    {
+      "symbol": "SNEK",
+      "cmc_id": 25264
+    }
+  ],
+  "prices": {
+    "ADA": 0.18316354843930954,
+    "NIGHT": 0.017318633079111016,
+    "SNEK": 0.000329728259456045
+  }
+}

@@ -30,7 +30,8 @@ def load_json(path: Path):
 
 
 def fetch_prices(assets: list[dict], fiat: str) -> dict[str, float]:
-    """Fetch prices from CMC using asset IDs, not symbols."""
+    """Fetch prices from CMC using CoinMarketCap IDs."""
+
     ids = ",".join(str(asset["cmc_id"]) for asset in assets)
 
     params = urlencode({
@@ -63,23 +64,55 @@ def fetch_prices(assets: list[dict], fiat: str) -> dict[str, float]:
                     or f"CMC error {status.get('error_code')}"
                 )
 
-            data = payload.get("data", {})
+            data = payload.get("data", [])
+
+            if not isinstance(data, list):
+                raise RuntimeError(
+                    f"Formato inesperado da CMC: data={type(data).__name__}"
+                )
 
             prices: dict[str, float] = {}
+
+            # Transform the CMC list into a lookup by ID.
+            by_id = {
+                str(item["id"]): item
+                for item in data
+                if isinstance(item, dict) and "id" in item
+            }
 
             for asset in assets:
                 symbol = asset["symbol"]
                 cmc_id = str(asset["cmc_id"])
 
-                item = data.get(cmc_id)
+                item = by_id.get(cmc_id)
 
                 if not item:
                     raise RuntimeError(
-                        f"CMC não retornou o ativo {symbol} "
-                        f"(ID {cmc_id})"
+                        f"CMC não retornou {symbol} (ID {cmc_id})"
                     )
 
-                quote = item.get("quote", {}).get(fiat, {})
+                quote_data = item.get("quote", [])
+
+                if not isinstance(quote_data, list):
+                    raise RuntimeError(
+                        f"Formato inesperado de quote para {symbol}"
+                    )
+
+                quote = next(
+                    (
+                        q
+                        for q in quote_data
+                        if isinstance(q, dict)
+                        and str(q.get("symbol", "")).upper() == fiat
+                    ),
+                    None,
+                )
+
+                if not quote:
+                    raise RuntimeError(
+                        f"CMC não retornou cotação {fiat} para {symbol}"
+                    )
+
                 price = quote.get("price")
 
                 if price is None or float(price) <= 0:
@@ -98,7 +131,6 @@ def fetch_prices(assets: list[dict], fiat: str) -> dict[str, float]:
     raise RuntimeError(
         f"Falha ao consultar CMC após 3 tentativas: {last_error}"
     )
-
 
 def read_rows() -> list[dict[str, str]]:
     if not CSV_PATH.exists():
