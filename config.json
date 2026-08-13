@@ -1,0 +1,19 @@
+{
+  "fiat": "USD",
+  "timezone": "America/Sao_Paulo",
+  "capture_time": "21:00",
+  "anchor": {
+    "symbol": "ADA",
+    "cmc_id": 2010
+  },
+  "comparatives": [
+    {
+      "symbol": "NIGHT",
+      "cmc_id": 39064
+    },
+    {
+      "symbol": "SNEK",
+      "cmc_id": 25264
+    }
+  ]
+}
