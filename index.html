@@ -178,7 +178,7 @@ function updateCaptureStatus(){
 function renderAutomationStatus(){
   const hasRemote=location.protocol==='http:'||location.protocol==='https:';
   $('automationStatus').textContent=hasRemote
-    ? 'Automação: GitHub Actions consulta a CMC diariamente às 21:00 BRT, atualiza data.csv e republica este portal.'
+    ? 'Automação: GitHub Actions consulta a CMC diariamente a partir das 21:30 BRT, capturando o snapshot das 21:00, atualiza data.csv e republica este portal.'
     : 'Automação configurada no projeto: GitHub Actions consulta a CMC diariamente às 21:00 BRT e atualiza data.csv.';
 }
 function render(){
