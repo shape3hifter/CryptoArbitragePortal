@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0b1020"/>
+      <stop offset="1" stop-color="#141f3a"/>
+    </linearGradient>
+    <linearGradient id="arrow" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#7aa2ff"/>
+      <stop offset="1" stop-color="#31e3d2"/>
+    </linearGradient>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="5" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <rect x="18" y="18" width="476" height="476" rx="92" fill="url(#bg)" stroke="#2b3857" stroke-width="10"/>
+
+  <!-- ADA -->
+  <circle cx="256" cy="126" r="82" fill="#146cff" stroke="#7aa2ff" stroke-width="7"/>
+  <g fill="#fff" opacity=".95">
+    <circle cx="256" cy="126" r="12"/>
+    <circle cx="256" cy="98" r="6"/><circle cx="256" cy="154" r="6"/>
+    <circle cx="228" cy="126" r="6"/><circle cx="284" cy="126" r="6"/>
+    <circle cx="236" cy="106" r="5"/><circle cx="276" cy="106" r="5"/>
+    <circle cx="236" cy="146" r="5"/><circle cx="276" cy="146" r="5"/>
+  </g>
+
+  <!-- NIGHT -->
+  <circle cx="128" cy="370" r="82" fill="#5b2bbd" stroke="#b88cff" stroke-width="7"/>
+  <path d="M156 331a53 53 0 1 0 0 78 47 47 0 1 1 0-78z" fill="#fff"/>
+
+  <!-- SNEK -->
+  <circle cx="384" cy="370" r="82" fill="#13a85f" stroke="#68d391" stroke-width="7"/>
+  <path d="M421 339c-18-14-40-7-51 4-9 10-11 23-2 31 10 8 22 4 26-5 4-10-5-18-14-17 7-10 24-16 41-2z" fill="#07140d" opacity=".28"/>
+  <path d="M347 401c18 14 40 7 51-4 9-10 11-23 2-31-10-8-22-4-26 5-4 10 5 18 14 17-7 10-24 16-41 2z" fill="#07140d" opacity=".28"/>
+  <path d="M355 372c21-34 59-41 72-20 8 13 3 28-10 34-10 5-18 1-21-6 18 4 27-13 14-22-14-10-35 1-45 22-8 15-10 30 3 37 10 6 26 2 35-7-13 22-45 31-61 11-11-14-4-34 13-49z" fill="#ffffff"/>
+
+  <!-- circular arrows -->
+  <path d="M197 151c-28 11-48 33-57 61" fill="none" stroke="url(#arrow)" stroke-width="14" stroke-linecap="round"/>
+  <path d="M136 210l3-30 28 16z" fill="#31e3d2"/>
+  <path d="M175 398c27 14 60 19 90 9" fill="none" stroke="url(#arrow)" stroke-width="14" stroke-linecap="round"/>
+  <path d="M258 393l17 24-30 3z" fill="#31e3d2"/>
+  <path d="M338 303c9-29 28-51 53-66" fill="none" stroke="url(#arrow)" stroke-width="14" stroke-linecap="round"/>
+  <path d="M391 232l-28-6 10 29z" fill="#31e3d2"/>
+</svg>
