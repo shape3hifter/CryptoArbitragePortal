@@ -2,18 +2,16 @@
   "fiat": "USD",
   "timezone": "America/Sao_Paulo",
   "capture_time": "21:00",
-  "anchor": {
-    "symbol": "ADA",
-    "cmc_id": 2010
-  },
-  "comparatives": [
-    {
-      "symbol": "NIGHT",
-      "cmc_id": 39064
-    },
-    {
-      "symbol": "SNEK",
-      "cmc_id": 25264
-    }
+  "capture_after_time": "21:30",
+  "base_currency": "USD",
+  "assets": [
+    {"symbol": "ADA", "type": "CRYPTO", "cmc_id": 2010},
+    {"symbol": "NIGHT", "type": "CRYPTO", "cmc_id": 39064},
+    {"symbol": "SNEK", "type": "CRYPTO", "cmc_id": 25264},
+    {"symbol": "SOL", "type": "CRYPTO", "cmc_id": 5426},
+    {"symbol": "BONK", "type": "CRYPTO", "cmc_id": 23095},
+    {"symbol": "WIF", "type": "CRYPTO", "cmc_id": 28752},
+    {"symbol": "BRL", "type": "FIAT", "source": "frankfurter"},
+    {"symbol": "EUR", "type": "FIAT", "source": "frankfurter"}
   ]
 }

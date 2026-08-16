@@ -1,0 +1,61 @@
+{
+  "fresh_start": true,
+  "reference_time": "21:00",
+  "timezone": "America/Sao_Paulo",
+  "requested_days": 365,
+  "start_date": "2025-08-16",
+  "end_date": "2026-08-15",
+  "crypto_source": "CoinMarketCap public historical web data, hourly open at 00:00 UTC (21:00 BRT)",
+  "fiat_source": "Frankfurter v2 daily rates, USD-anchored; prior published rate carried across non-business days",
+  "rows": 2805,
+  "coverage": {
+    "ADA": {
+      "count": 365,
+      "first": "2025-08-16",
+      "last": "2026-08-15",
+      "has_requested_end_date": true
+    },
+    "NIGHT": {
+      "count": 250,
+      "first": "2025-12-09",
+      "last": "2026-08-15",
+      "has_requested_end_date": true
+    },
+    "SNEK": {
+      "count": 365,
+      "first": "2025-08-16",
+      "last": "2026-08-15",
+      "has_requested_end_date": true
+    },
+    "SOL": {
+      "count": 365,
+      "first": "2025-08-16",
+      "last": "2026-08-15",
+      "has_requested_end_date": true
+    },
+    "BONK": {
+      "count": 365,
+      "first": "2025-08-16",
+      "last": "2026-08-15",
+      "has_requested_end_date": true
+    },
+    "WIF": {
+      "count": 365,
+      "first": "2025-08-16",
+      "last": "2026-08-15",
+      "has_requested_end_date": true
+    },
+    "BRL": {
+      "count": 365,
+      "first": "2025-08-16",
+      "last": "2026-08-15",
+      "has_requested_end_date": true
+    },
+    "EUR": {
+      "count": 365,
+      "first": "2025-08-16",
+      "last": "2026-08-15",
+      "has_requested_end_date": true
+    }
+  }
+}
