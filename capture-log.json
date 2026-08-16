@@ -1,11 +1,11 @@
 {
-  "reference_date": "2026-08-14",
+  "reference_date": "2026-08-15",
   "reference_time": "21:00",
   "reference_timezone": "America/Sao_Paulo",
-  "reference_utc": "2026-08-15T00:00:00+00:00",
+  "reference_utc": "2026-08-16T00:00:00+00:00",
   "capture_after_time": "21:30",
-  "executed_at": "2026-08-14T22:55:55.145670-03:00",
-  "execution_delay_minutes": 85.92,
+  "executed_at": "2026-08-15T23:05:46.921270-03:00",
+  "execution_delay_minutes": 95.78,
   "status": "on_time",
   "price_method": "hourly_open",
   "source": "coinmarketcap_public_historical_web_data",
@@ -24,13 +24,13 @@
     }
   ],
   "prices": {
-    "ADA": 0.1798524062,
-    "NIGHT": 0.0173834736,
-    "SNEK": 0.00030773873475
+    "ADA": 0.1761326283,
+    "NIGHT": 0.0173241903,
+    "SNEK": 0.00030368388331
   },
   "cmc_candle_open": {
-    "ADA": "2026-08-15T00:00:00+00:00",
-    "NIGHT": "2026-08-15T00:00:00+00:00",
-    "SNEK": "2026-08-15T00:00:00+00:00"
+    "ADA": "2026-08-16T00:00:00+00:00",
+    "NIGHT": "2026-08-16T00:00:00+00:00",
+    "SNEK": "2026-08-16T00:00:00+00:00"
   }
 }
