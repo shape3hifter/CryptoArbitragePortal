@@ -1,36 +1,82 @@
 {
-  "reference_date": "2026-08-15",
+  "reference_date": "2026-08-16",
   "reference_time": "21:00",
   "reference_timezone": "America/Sao_Paulo",
-  "reference_utc": "2026-08-16T00:00:00+00:00",
+  "reference_utc": "2026-08-17T00:00:00+00:00",
   "capture_after_time": "21:30",
-  "executed_at": "2026-08-15T23:05:46.921270-03:00",
-  "execution_delay_minutes": 95.78,
+  "executed_at": "2026-08-16T23:00:46.774834-03:00",
   "status": "on_time",
-  "price_method": "hourly_open",
-  "source": "coinmarketcap_public_historical_web_data",
+  "price_method": "hourly_open_for_crypto; latest_published_daily_fx_for_fiat",
   "assets": [
     {
       "symbol": "ADA",
+      "type": "CRYPTO",
       "cmc_id": 2010
     },
     {
       "symbol": "NIGHT",
+      "type": "CRYPTO",
       "cmc_id": 39064
     },
     {
       "symbol": "SNEK",
+      "type": "CRYPTO",
       "cmc_id": 25264
+    },
+    {
+      "symbol": "SOL",
+      "type": "CRYPTO",
+      "cmc_id": 5426
+    },
+    {
+      "symbol": "BONK",
+      "type": "CRYPTO",
+      "cmc_id": 23095
+    },
+    {
+      "symbol": "WIF",
+      "type": "CRYPTO",
+      "cmc_id": 28752
+    },
+    {
+      "symbol": "BRL",
+      "type": "FIAT",
+      "cmc_id": null
+    },
+    {
+      "symbol": "EUR",
+      "type": "FIAT",
+      "cmc_id": null
     }
   ],
   "prices": {
-    "ADA": 0.1761326283,
-    "NIGHT": 0.0173241903,
-    "SNEK": 0.00030368388331
+    "ADA": "0.1748473134",
+    "NIGHT": "0.017155672",
+    "SNEK": "0.00030676242768",
+    "SOL": "74.5390229851",
+    "BONK": "0.00000230636277",
+    "WIF": "0.135704755",
+    "BRL": "0.19285",
+    "EUR": "1.1553"
   },
-  "cmc_candle_open": {
-    "ADA": "2026-08-16T00:00:00+00:00",
-    "NIGHT": "2026-08-16T00:00:00+00:00",
-    "SNEK": "2026-08-16T00:00:00+00:00"
+  "sources": {
+    "ADA": "coinmarketcap_public_historical_web_data",
+    "NIGHT": "coinmarketcap_public_historical_web_data",
+    "SNEK": "coinmarketcap_public_historical_web_data",
+    "SOL": "coinmarketcap_public_historical_web_data",
+    "BONK": "coinmarketcap_public_historical_web_data",
+    "WIF": "coinmarketcap_public_historical_web_data",
+    "BRL": "frankfurter",
+    "EUR": "frankfurter"
+  },
+  "source_timestamps": {
+    "ADA": "2026-08-17T00:00:00+00:00",
+    "NIGHT": "2026-08-17T00:00:00+00:00",
+    "SNEK": "2026-08-17T00:00:00+00:00",
+    "SOL": "2026-08-17T00:00:00+00:00",
+    "BONK": "2026-08-17T00:00:00+00:00",
+    "WIF": "2026-08-17T00:00:00+00:00",
+    "BRL": "2026-08-16",
+    "EUR": "2026-08-16"
   }
 }
