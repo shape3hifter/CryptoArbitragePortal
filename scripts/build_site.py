@@ -86,8 +86,11 @@ def build() -> None:
             raise SystemExit("Não encontrei o ponto de inserção do painel Trades")
         html = html.replace(marker, PANEL + marker, 1)
 
+    # Keep the original portal script intact. Add the bridge and Trades scripts
+    # immediately before </body>, rather than replacing the main script's
+    # closing tag (which would make the page's primary JavaScript invalid).
     if "window.CryptoPortalBridge" not in html:
-        html = html.replace("</script>\n</body>", BRIDGE + "</body>", 1)
+        html = html.replace("</body>", BRIDGE + "</body>", 1)
     if 'id="trades-style"' not in html:
         html = html.replace("</style>\n</head>", STYLE + "\n</head>", 1)
 
