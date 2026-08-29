@@ -45,6 +45,21 @@ window.CryptoPortalBridge = {
     prices: {...temporarySnapshot.prices}
   } : null
 };
+
+// Shared modal helpers used by trades.js. Keep these outside the portal's
+// main script so the Trades module can open/close its own dialogs safely.
+window.openModal = (id) => {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.classList.remove('hidden');
+  el.setAttribute('aria-hidden', 'false');
+};
+window.closeModal = (id) => {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.classList.add('hidden');
+  el.setAttribute('aria-hidden', 'true');
+};
 </script>
 <script src="supabase/config.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
