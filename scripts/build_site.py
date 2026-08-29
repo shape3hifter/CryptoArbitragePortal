@@ -1,11 +1,5 @@
 #!/usr/bin/env python3
-"""Build the deployable static site.
-
-The source index.html remains the stable portal UI. This build creates dist/,
-adds the persistent Trades module through trades.js, and exposes a small bridge
-from the existing portal calculation state to trades.js without moving price
-data out of data.csv.
-"""
+"""Build the deployable static site."""
 from __future__ import annotations
 
 import shutil
@@ -35,7 +29,6 @@ window.CryptoPortalBridge = {
     prices: {...temporarySnapshot.prices}
   } : null
 };
-
 window.openModal = (id) => {
   const el = document.getElementById(id);
   if (!el) return;
@@ -51,7 +44,21 @@ window.closeModal = (id) => {
 </script>
 <script src="supabase/config.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="trades.js"></script>
+<script>
+(function bootTrades(){
+  function load(){
+    const grid = document.querySelector('#arbitragesView .grid');
+    if (!grid) { setTimeout(load, 100); return; }
+    if (document.querySelector('script[data-trades-module]')) return;
+    const s = document.createElement('script');
+    s.src = 'trades.js';
+    s.dataset.tradesModule = 'true';
+    document.body.appendChild(s);
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', load, {once:true});
+  else load();
+})();
+</script>
 '''
 
 
@@ -77,10 +84,9 @@ def build() -> None:
 
     html = SOURCE_INDEX.read_text(encoding="utf-8")
 
-    # Trades is rendered entirely by trades.js. Keeping the panel and modal
-    # markup in one place ensures the controls are bound to the same DOM.
-    if "window.CryptoPortalBridge" not in html:
-        html = html.replace("</body>", BRIDGE + "</body>", 1)
+    # Load the Trades module only after the main portal has rendered its
+    # arbitrage grid. This avoids racing the portal's asynchronous startup.
+    html = html.replace("</body>", BRIDGE + "</body>", 1)
 
     (DIST / "index.html").write_text(html, encoding="utf-8")
     shutil.copy2(TRADES_JS, DIST / "trades.js")
