@@ -8,6 +8,24 @@
     return window.CryptoPortalBridge?.getContext?.() || {};
   }
 
+  function currentArbitrage() {
+    const ctx = portalContext();
+    const select = document.getElementById('arbitrageSelect');
+    const opt = select?.selectedOptions?.[0];
+    const name = (ctx.arbitrageName || opt?.textContent || '').trim();
+    const parts = name.split('/').map(v => v.trim()).filter(Boolean);
+    const anchor = ctx.anchor || parts[0] || document.getElementById('anchor')?.value || 'ADA';
+    const comps = Array.isArray(ctx.comps) && ctx.comps.length
+      ? ctx.comps
+      : parts.filter(v => v !== anchor);
+    return {
+      id: ctx.arbitrageId || select?.value || name || 'current',
+      name: name || `${anchor} / ${comps.join(' / ')}`,
+      anchor,
+      comps: comps.length ? comps : (anchor === 'SOL' ? ['BONK', 'WIF'] : ['NIGHT', 'SNEK'])
+    };
+  }
+
   function panelMarkup() {
     return `
       <section class="card trades-card" id="${PANEL_ID}">
@@ -72,59 +90,86 @@
     document.body.appendChild(modal);
   }
 
-  function arbitrages() {
-    const ctx = portalContext();
-    if (Array.isArray(ctx.arbitrages) && ctx.arbitrages.length) return ctx.arbitrages;
-    const select = document.getElementById('arbitrageSelect');
-    const opt = select?.selectedOptions?.[0];
-    const anchor = ctx.anchor || document.getElementById('anchor')?.value || 'ADA';
-    const comps = Array.isArray(ctx.comps) ? ctx.comps : [];
-    return [{id:select?.value||'current',name:opt?.textContent||`${anchor} / ${comps.join(' / ')}`,anchor,comps}];
-  }
-
   function fillForm() {
-    const list = arbitrages();
+    const arb = currentArbitrage();
     const aSel = document.getElementById('tradeVisualArbitrage');
-    aSel.innerHTML = list.map(a=>`<option value="${a.id}">${a.name}</option>`).join('');
-    const current = portalContext().arbitrageId;
-    if (current && list.some(a=>a.id===current)) aSel.value=current;
-    updateFields();
+    const strategy = document.getElementById('tradeVisualStrategy');
+    const asset = document.getElementById('tradeVisualAsset');
+    const amountLabel = document.querySelector('label[for="tradeVisualAnchorAmount"]');
+    const ratioLabel = document.querySelector('label[for="tradeVisualRatio"]');
+
+    aSel.innerHTML = `<option value="${arb.id}">${arb.name}</option>`;
+    const strategies = arb.comps.map(c => `${arb.anchor} → ${c} → ${arb.anchor}`);
+    if (arb.comps.length >= 2) strategies.push(`${arb.comps[0]} → ${arb.comps[1]} → ${arb.anchor}`);
+    strategy.innerHTML = [...new Set(strategies)].map(s => `<option value="${s}">${s}</option>`).join('');
+    asset.innerHTML = arb.comps.map(c => `<option value="${c}">${c}</option>`).join('');
+    amountLabel.textContent = `Capital inicial (${arb.anchor})`;
+    ratioLabel.textContent = `Relação de entrada: 1 ativo = ${arb.anchor}`;
+
     const d = new Date();
     const p=n=>String(n).padStart(2,'0');
     document.getElementById('tradeVisualOpenedAt').value=`${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
     document.getElementById('tradeVisualMessage').textContent='';
   }
 
-  function updateFields() {
-    const list=arbitrages();
-    const selected=list.find(a=>a.id===document.getElementById('tradeVisualArbitrage').value)||list[0];
-    if(!selected)return;
-    const anchor=selected.anchor||'ADA'; const comps=selected.comps||[];
-    document.getElementById('tradeVisualStrategy').innerHTML=[...new Set(comps.map(c=>`${anchor} → ${c} → ${anchor}`).concat(comps.length>=2?[`${comps[0]} → ${comps[1]} → ${anchor}`]:[]))].map(s=>`<option>${s}</option>`).join('');
-    document.getElementById('tradeVisualAsset').innerHTML=comps.map(c=>`<option>${c}</option>`).join('');
-    document.querySelector('label[for="tradeVisualAnchorAmount"]').textContent=`Capital inicial (${anchor})`;
-    document.querySelector('label[for="tradeVisualRatio"]').textContent=`Relação de entrada: 1 ativo = ${anchor}`;
-  }
-
   function openModal(){
-    fillForm(); const modal=document.getElementById(MODAL_ID); modal.classList.remove('hidden'); modal.setAttribute('aria-hidden','false');
+    fillForm();
+    const modal=document.getElementById(MODAL_ID);
+    modal.classList.remove('hidden');
+    modal.setAttribute('aria-hidden','false');
   }
-  function closeModal(){ const modal=document.getElementById(MODAL_ID); modal.classList.add('hidden'); modal.setAttribute('aria-hidden','true'); }
 
-  function init() {
-    const grid=document.querySelector('#arbitragesView .grid');
-    if(!grid) return false;
-    ensureStyle();
-    if(!document.getElementById(PANEL_ID)) grid.appendChild(document.createRange().createContextualFragment(panelMarkup()).firstElementChild);
-    makeModal();
-    document.getElementById('newTradeBtn')?.addEventListener('click',openModal);
+  function closeModal(){
+    const modal=document.getElementById(MODAL_ID);
+    modal.classList.add('hidden');
+    modal.setAttribute('aria-hidden','true');
+  }
+
+  function bind() {
+    const button=document.getElementById('newTradeBtn');
+    if (!button || button.dataset.tradesBound === 'true') return false;
+    button.dataset.tradesBound='true';
+    button.addEventListener('click', openModal);
     document.querySelectorAll('[data-close-trade-modal="true"]').forEach(b=>b.addEventListener('click',closeModal));
-    document.getElementById('tradeVisualArbitrage')?.addEventListener('change',updateFields);
-    document.getElementById('tradeVisualForm')?.addEventListener('submit',e=>{e.preventDefault();const msg=document.getElementById('tradeVisualMessage');const amount=Number(document.getElementById('tradeVisualAnchorAmount').value),ratio=Number(document.getElementById('tradeVisualRatio').value),quantity=Number(document.getElementById('tradeVisualQuantity').value),anchor=portalContext().anchor||'ADA';if(!(amount>0&&ratio>0&&quantity>0)){msg.textContent='Preencha capital, relação e quantidade com valores maiores que zero.';return}const value=quantity*ratio;if(Math.abs(value-amount)>Math.max(1e-7,amount*1e-5)){msg.textContent=`Atenção: ${quantity} × ${ratio} = ${value.toLocaleString('pt-BR')} ${anchor}, diferente do capital informado (${amount.toLocaleString('pt-BR')} ${anchor}).`;return}msg.textContent=`Cadastro validado. ${quantity.toLocaleString('en-US',{maximumFractionDigits:8})} do ativo representa aproximadamente ${amount.toLocaleString('pt-BR')} ${anchor}. Ainda não gravado.`});
-    const ctx=portalContext(); const context=document.getElementById('tradesContext'); if(context)context.textContent=ctx.arbitrageName?`Acompanhamento de ${ctx.arbitrageName}`:'Acompanhamento da arbitragem selecionada';
+    document.getElementById('tradeVisualArbitrage')?.addEventListener('change',()=>{
+      const arb=currentArbitrage();
+      const selected=arb;
+      const strategy=document.getElementById('tradeVisualStrategy');
+      const asset=document.getElementById('tradeVisualAsset');
+      const strategies=selected.comps.map(c=>`${selected.anchor} → ${c} → ${selected.anchor}`);
+      if(selected.comps.length>=2)strategies.push(`${selected.comps[0]} → ${selected.comps[1]} → ${selected.anchor}`);
+      strategy.innerHTML=[...new Set(strategies)].map(s=>`<option>${s}</option>`).join('');
+      asset.innerHTML=selected.comps.map(c=>`<option>${c}</option>`).join('');
+    });
+    document.getElementById('tradeVisualForm')?.addEventListener('submit',e=>{
+      e.preventDefault();
+      const arb=currentArbitrage();
+      const amount=Number(document.getElementById('tradeVisualAnchorAmount').value);
+      const ratio=Number(document.getElementById('tradeVisualRatio').value);
+      const quantity=Number(document.getElementById('tradeVisualQuantity').value);
+      const msg=document.getElementById('tradeVisualMessage');
+      if(!(amount>0&&ratio>0&&quantity>0)){msg.textContent='Preencha capital, relação e quantidade com valores maiores que zero.';return;}
+      const reconstructed=quantity*ratio;
+      const tolerance=Math.max(1e-7,amount*1e-5);
+      if(Math.abs(reconstructed-amount)>tolerance){msg.textContent=`Atenção: ${quantity} × ${ratio} = ${reconstructed.toLocaleString('pt-BR')} ${arb.anchor}, diferente do capital informado (${amount.toLocaleString('pt-BR')} ${arb.anchor}).`;return;}
+      msg.textContent=`Cadastro validado. ${quantity.toLocaleString('en-US',{maximumFractionDigits:8})} do ativo representa aproximadamente ${amount.toLocaleString('pt-BR')} ${arb.anchor}. Ainda não gravado.`;
+    });
     return true;
   }
 
-  function wait(n=120){ if(init()) return; if(n>0) setTimeout(()=>wait(n-1),100); }
-  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',()=>wait(),{once:true}); else wait();
+  function init() {
+    const grid=document.querySelector('#arbitragesView .grid');
+    if(!grid)return false;
+    ensureStyle();
+    if(!document.getElementById(PANEL_ID)) grid.appendChild(document.createRange().createContextualFragment(panelMarkup()).firstElementChild);
+    makeModal();
+    bind();
+    const ctx=portalContext();
+    const context=document.getElementById('tradesContext');
+    if(context)context.textContent=ctx.arbitrageName?`Acompanhamento de ${ctx.arbitrageName}`:`Acompanhamento de ${currentArbitrage().name}`;
+    return true;
+  }
+
+  function wait(n=120){if(init())return;if(n>0)setTimeout(()=>wait(n-1),100)}
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>wait(),{once:true});else wait();
 })();
