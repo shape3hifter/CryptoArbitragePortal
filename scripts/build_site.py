@@ -52,7 +52,7 @@ window.CryptoPortalBridge = {
 '''
 
 STYLE = r'''
-<style>
+<style id="trades-style">
 .trades-card{height:100%;min-height:100%}.trades-auth{margin-bottom:10px;padding:9px 10px;border:1px solid var(--border);border-radius:12px;background:var(--panel2)}
 .trade-auth-line{display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap}.trade-mini{background:var(--panel2);border:1px solid var(--border);border-radius:14px;padding:11px;margin-top:8px}.trade-mini-head{display:flex;justify-content:space-between;gap:8px;align-items:center}.trade-title{font-weight:700}.trade-meta{font-size:11px;color:var(--muted);margin-top:3px}.trade-main{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:9px}.trade-k{font-size:10px;color:var(--muted)}.trade-v{font-size:14px;font-weight:700;margin-top:2px}.trade-result-good{color:var(--good)}.trade-result-bad{color:var(--bad)}.trade-result-neutral{color:var(--warn)}.trade-actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:9px}.trade-actions .btn{font-size:11px;padding:7px 9px}.trade-status{font-size:10px;padding:4px 7px;border-radius:999px;border:1px solid var(--border);font-weight:700}.trade-status.open{color:var(--good);background:rgba(104,211,145,.09)}.trade-status.closed{color:var(--muted)}.trades-closed{margin-top:12px}.trades-subtitle{font-size:11px;color:var(--muted);font-weight:700;margin:8px 0 4px}.trade-empty{padding:15px;text-align:center;color:var(--muted);border:1px dashed var(--border);border-radius:12px}.trade-modal{position:fixed;inset:0;z-index:1000;display:flex;align-items:center;justify-content:center;padding:18px}.trade-modal.hidden{display:none}.trade-modal-backdrop{position:absolute;inset:0;background:rgba(0,0,0,.62)}.trade-dialog{position:relative;width:min(680px,100%);max-height:90vh;overflow:auto;background:var(--panel);border:1px solid var(--border);border-radius:18px;padding:16px;box-shadow:0 20px 60px rgba(0,0,0,.45)}.trade-form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.trade-form-grid .field:last-child{grid-column:1/-1}.auth-grid{grid-template-columns:1fr}.auth-grid .field:last-child{grid-column:auto}.trade-entry-hint{margin-top:10px;font-size:11px;line-height:1.5;color:var(--muted);background:var(--panel2);border:1px solid var(--border);border-radius:12px;padding:9px}.trade-sim{margin-top:9px;padding:9px;border:1px solid rgba(122,162,255,.25);background:rgba(122,162,255,.06);border-radius:12px;font-size:11px}.trade-sim strong{font-size:13px}@media(max-width:900px){.trade-form-grid{grid-template-columns:1fr}.trade-form-grid .field:last-child{grid-column:auto}.trade-main{grid-template-columns:1fr}}
 </style>
@@ -86,23 +86,19 @@ def build() -> None:
             raise SystemExit("Não encontrei o ponto de inserção do painel Trades")
         html = html.replace(marker, PANEL + marker, 1)
 
-    # Replace the closing body area with the runtime bridge and module scripts.
     if "window.CryptoPortalBridge" not in html:
-        html = html.replace("</script>\n</body>", "" + BRIDGE + "</body>", 1)
-    if ".trades-card" not in html:
-        html = html.replace("</style>\n</head>", STYLE + "</head>", 1)
+        html = html.replace("</script>\n</body>", BRIDGE + "</body>", 1)
+    if 'id="trades-style"' not in html:
+        html = html.replace("</style>\n</head>", STYLE + "\n</head>", 1)
 
-    # Patch the main portal so trade calculations refresh when the existing UI renders.
-    hook = "function render(){"
-    if "window.dispatchEvent(new Event('cryptoPortalChanged'))" not in html:
-        needle = "  $('lastInfo').textContent=`${settings.lookback}D · exibindo os 12 últimos registros disponíveis por ativo`;\n}"
-        replacement = "  $('lastInfo').textContent=`${settings.lookback}D · exibindo os 12 últimos registros disponíveis por ativo`;\n  window.dispatchEvent(new Event('cryptoPortalChanged'));\n}"
-        if needle in html:
-            html = html.replace(needle, replacement, 1)
+    # Patch the main portal so trade calculations can refresh on portal renders.
+    needle = "  $('lastInfo').textContent=`${settings.lookback}D · exibindo os 12 últimos registros disponíveis por ativo`;\n}"
+    replacement = "  $('lastInfo').textContent=`${settings.lookback}D · exibindo os 12 últimos registros disponíveis por ativo`;\n  window.dispatchEvent(new Event('cryptoPortalChanged'));\n}"
+    if "cryptoPortalChanged" not in html and needle in html:
+        html = html.replace(needle, replacement, 1)
 
     (DIST / "index.html").write_text(html, encoding="utf-8")
     shutil.copy2(TRADES_JS, DIST / "trades.js")
-    # Supabase config lives under a short root path in the deployed artifact.
     (DIST / "supabase").mkdir()
     shutil.copy2(SUPABASE_CONFIG, DIST / "supabase" / "config.js")
 
