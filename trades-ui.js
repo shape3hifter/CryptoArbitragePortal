@@ -4,45 +4,26 @@
   const PANEL_ID = 'tradesPanel';
   const MODAL_ID = 'tradeVisualModal';
 
-  function portalContext() {
-    return window.CryptoPortalBridge?.getContext?.() || {};
-  }
-
-  function parseCurrentArbitrage() {
-    const ctx = portalContext();
-    let name = String(ctx.arbitrageName || '').trim();
+  function currentArbitrage() {
     const select = document.getElementById('arbitrageSelect');
-    const option = select?.selectedOptions?.[0];
-    if (!name) name = String(option?.textContent || '').trim();
+    const text = String(select?.selectedOptions?.[0]?.textContent || '').trim();
+    const normalized = text.replace(/[‐‑‒–—−]/g, '-').replace(/\s+/g, ' ');
 
-    let anchor = String(ctx.anchor || '').trim();
-    let comps = Array.isArray(ctx.comps) ? ctx.comps.filter(Boolean).map(String) : [];
-
-    if ((!anchor || !comps.length) && name) {
-      const parts = name.split('/').map(s => s.trim()).filter(Boolean);
-      if (parts.length >= 2) {
-        anchor = anchor || parts[0];
-        if (!comps.length) comps = parts.slice(1);
-      }
-    }
-
-    anchor = anchor || document.getElementById('anchor')?.value || 'ADA';
-    if (!comps.length) {
-      const labels = [...document.querySelectorAll('#compareChecks label')]
-        .map(label => label.textContent.trim())
-        .filter(Boolean);
-      comps = labels.filter(x => x !== anchor).slice(0, 5);
-    }
-
-    return {
-      id: String(ctx.arbitrageId || select?.value || 'current'),
-      name: name || `${anchor} / ${comps.join(' / ')}`,
-      anchor,
-      comps
+    const known = {
+      'ADA / NIGHT / SNEK': { id: 'arb-ada-night-snek', name: 'ADA / NIGHT / SNEK', anchor: 'ADA', comps: ['NIGHT', 'SNEK'] },
+      'SOL / BONK / WIF': { id: 'arb-sol-bonk-wif', name: 'SOL / BONK / WIF', anchor: 'SOL', comps: ['BONK', 'WIF'] }
     };
+    if (known[normalized]) return known[normalized];
+
+    const parts = normalized.split(/[\/|]/).map(x => x.trim()).filter(Boolean);
+    if (parts.length >= 2) {
+      return { id: String(select?.value || 'current'), name: normalized, anchor: parts[0], comps: parts.slice(1) };
+    }
+
+    return { id: String(select?.value || 'current'), name: normalized || 'Arbitragem selecionada', anchor: 'ADA', comps: ['NIGHT', 'SNEK'] };
   }
 
-  function ensureStyle() {
+  function ensureStyles() {
     if (document.getElementById('trades-ui-style')) return;
     const style = document.createElement('style');
     style.id = 'trades-ui-style';
@@ -61,20 +42,23 @@
     document.head.appendChild(style);
   }
 
-  function panelMarkup() {
-    return `
-      <section class="card trades-card" id="${PANEL_ID}">
-        <div class="section-head">
-          <div><h2>Trades</h2><div class="note" id="tradesContext">Acompanhamento da arbitragem selecionada</div></div>
-          <button class="btn primary" id="newTradeBtn" type="button">+ Novo trade</button>
-        </div>
-        <div class="trade-empty" id="tradesOpenEmpty">Nenhum trade aberto nesta arbitragem.</div>
-        <div class="trades-subtitle">FECHADOS</div>
-        <div class="trade-empty" id="tradesClosedEmpty">Nenhum trade fechado nesta arbitragem.</div>
-      </section>`;
+  function addPanel(grid) {
+    if (document.getElementById(PANEL_ID)) return;
+    const panel = document.createElement('section');
+    panel.className = 'card trades-card';
+    panel.id = PANEL_ID;
+    panel.innerHTML = `
+      <div class="section-head">
+        <div><h2>Trades</h2><div class="note" id="tradesContext">Acompanhamento da arbitragem selecionada</div></div>
+        <button class="btn primary" id="newTradeBtn" type="button">+ Novo trade</button>
+      </div>
+      <div class="trade-empty">Nenhum trade aberto nesta arbitragem.</div>
+      <div class="trades-subtitle">FECHADOS</div>
+      <div class="trade-empty">Nenhum trade fechado nesta arbitragem.</div>`;
+    grid.appendChild(panel);
   }
 
-  function makeModal() {
+  function addModal() {
     if (document.getElementById(MODAL_ID)) return;
     const modal = document.createElement('div');
     modal.id = MODAL_ID;
@@ -98,7 +82,7 @@
             <div class="field"><label id="tradeVisualRatioLabel" for="tradeVisualRatio">Relação de entrada</label><input id="tradeVisualRatio" type="number" min="0" step="any" required></div>
             <div class="field"><label for="tradeVisualNotes">Observação</label><input id="tradeVisualNotes" placeholder="Opcional"></div>
           </div>
-          <div class="trade-entry-hint">A posição e a relação da entrada serão preservadas. Nesta etapa, o formulário apenas valida o cadastro; ainda não grava no PostgreSQL.</div>
+          <div class="trade-entry-hint">Nesta etapa, o formulário apenas valida o cadastro visualmente; ainda não grava no PostgreSQL.</div>
           <div class="actions"><button class="btn primary" type="submit">Validar cadastro</button><button class="btn" type="button" data-close-trade-modal="true">Cancelar</button></div>
           <div id="tradeVisualMessage" class="note" style="margin-top:10px"></div>
         </form>
@@ -107,95 +91,60 @@
   }
 
   function fillForm() {
-    const arb = parseCurrentArbitrage();
+    const arb = currentArbitrage();
     const aSel = document.getElementById('tradeVisualArbitrage');
+    const strategy = document.getElementById('tradeVisualStrategy');
+    const asset = document.getElementById('tradeVisualAsset');
     aSel.innerHTML = `<option value="${arb.id}">${arb.name}</option>`;
-    updateFields(arb);
-    const d = new Date();
-    const p = n => String(n).padStart(2, '0');
+    strategy.innerHTML = arb.comps.map(c => `<option>${arb.anchor} → ${c} → ${arb.anchor}</option>`).join('');
+    if (arb.comps.length >= 2) strategy.insertAdjacentHTML('beforeend', `<option>${arb.comps[0]} → ${arb.comps[1]} → ${arb.anchor}</option>`);
+    asset.innerHTML = arb.comps.map(c => `<option value="${c}">${c}</option>`).join('');
+    document.getElementById('tradeVisualAnchorLabel').textContent = `Capital inicial (${arb.anchor})`;
+    document.getElementById('tradeVisualRatioLabel').textContent = `Relação de entrada: 1 ativo = ${arb.anchor}`;
+    const d = new Date(), p = n => String(n).padStart(2, '0');
     document.getElementById('tradeVisualOpenedAt').value = `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
     document.getElementById('tradeVisualMessage').textContent = '';
   }
 
-  function updateFields(arb = parseCurrentArbitrage()) {
-    const anchor = arb.anchor || 'ADA';
-    const comps = arb.comps || [];
-    const strategies = comps.map(c => `${anchor} → ${c} → ${anchor}`);
-    if (comps.length >= 2) strategies.push(`${comps[0]} → ${comps[1]} → ${anchor}`);
-    const strategy = document.getElementById('tradeVisualStrategy');
-    const asset = document.getElementById('tradeVisualAsset');
-    if (strategy) strategy.innerHTML = [...new Set(strategies)].map(s => `<option>${s}</option>`).join('');
-    if (asset) asset.innerHTML = comps.map(c => `<option value="${c}">${c}</option>`).join('');
-    const label = document.getElementById('tradeVisualAnchorLabel');
-    const ratioLabel = document.getElementById('tradeVisualRatioLabel');
-    if (label) label.textContent = `Capital inicial (${anchor})`;
-    if (ratioLabel) ratioLabel.textContent = `Relação de entrada: 1 ativo = ${anchor}`;
-  }
-
-  function openModal() {
-    fillForm();
-    const modal = document.getElementById(MODAL_ID);
-    modal.classList.remove('hidden');
-    modal.setAttribute('aria-hidden', 'false');
-  }
-
-  function closeModal() {
-    const modal = document.getElementById(MODAL_ID);
-    if (!modal) return;
-    modal.classList.add('hidden');
-    modal.setAttribute('aria-hidden', 'true');
-  }
-
-  function bindEvents() {
+  function bind() {
     const button = document.getElementById('newTradeBtn');
-    if (button && !button.dataset.bound) {
-      button.addEventListener('click', openModal);
+    const modal = document.getElementById(MODAL_ID);
+    if (!button || !modal) return;
+    if (!button.dataset.bound) {
+      button.addEventListener('click', () => {
+        fillForm();
+        modal.classList.remove('hidden');
+        modal.setAttribute('aria-hidden', 'false');
+      });
       button.dataset.bound = 'true';
     }
-    const modal = document.getElementById(MODAL_ID);
-    if (!modal || modal.dataset.bound) return;
-    modal.querySelectorAll('[data-close-trade-modal="true"]').forEach(b => b.addEventListener('click', closeModal));
-    document.getElementById('tradeVisualArbitrage')?.addEventListener('change', () => updateFields());
-    document.getElementById('tradeVisualForm')?.addEventListener('submit', e => {
-      e.preventDefault();
-      const anchor = parseCurrentArbitrage().anchor || 'ADA';
-      const amount = Number(document.getElementById('tradeVisualAnchorAmount').value);
-      const ratio = Number(document.getElementById('tradeVisualRatio').value);
-      const quantity = Number(document.getElementById('tradeVisualQuantity').value);
-      const msg = document.getElementById('tradeVisualMessage');
-      if (!(amount > 0) || !(ratio > 0) || !(quantity > 0)) {
-        msg.textContent = 'Preencha capital, relação e quantidade com valores maiores que zero.';
-        return;
-      }
-      const reconstructed = quantity * ratio;
-      const tolerance = Math.max(0.0000001, amount * 0.00001);
-      if (Math.abs(reconstructed - amount) > tolerance) {
-        msg.textContent = `Atenção: ${quantity} × ${ratio} = ${reconstructed.toLocaleString('pt-BR')} ${anchor}, diferente do capital informado (${amount.toLocaleString('pt-BR')} ${anchor}).`;
-        return;
-      }
-      msg.textContent = `Cadastro validado. ${quantity.toLocaleString('en-US', {maximumFractionDigits:8})} do ativo representa aproximadamente ${amount.toLocaleString('pt-BR')} ${anchor}. Ainda não gravado.`;
-    });
-    modal.dataset.bound = 'true';
+    if (!modal.dataset.bound) {
+      modal.querySelectorAll('[data-close-trade-modal="true"]').forEach(b => b.addEventListener('click', () => {
+        modal.classList.add('hidden');
+        modal.setAttribute('aria-hidden', 'true');
+      }));
+      modal.dataset.bound = 'true';
+    }
   }
 
   function init() {
     const grid = document.querySelector('#arbitragesView .grid');
     if (!grid) return false;
-    ensureStyle();
-    if (!document.getElementById(PANEL_ID)) grid.appendChild(document.createRange().createContextualFragment(panelMarkup()).firstElementChild);
-    makeModal();
-    bindEvents();
-    const arb = parseCurrentArbitrage();
-    const ctx = document.getElementById('tradesContext');
-    if (ctx) ctx.textContent = arb.name ? `Acompanhamento de ${arb.name}` : 'Acompanhamento da arbitragem selecionada';
+    ensureStyles();
+    addPanel(grid);
+    addModal();
+    bind();
+    const arb = currentArbitrage();
+    const context = document.getElementById('tradesContext');
+    if (context) context.textContent = `Acompanhamento de ${arb.name}`;
     return true;
   }
 
-  function wait(n = 150) {
+  function wait(n=150) {
     if (init()) return;
-    if (n > 0) setTimeout(() => wait(n - 1), 100);
+    if (n > 0) setTimeout(() => wait(n-1), 100);
   }
 
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => wait(), {once:true});
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => wait(), { once: true });
   else wait();
 })();
