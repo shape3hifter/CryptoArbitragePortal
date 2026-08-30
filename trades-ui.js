@@ -1,207 +1,118 @@
 (() => {
   'use strict';
 
-  const ARBS = {
+  const CONFIG = {
     'ADA / NIGHT / SNEK': { id: 'arb-ada-night-snek', anchor: 'ADA', assets: ['NIGHT', 'SNEK'] },
     'SOL / BONK / WIF': { id: 'arb-sol-bonk-wif', anchor: 'SOL', assets: ['BONK', 'WIF'] },
   };
-
   const $ = id => document.getElementById(id);
+  const fmt = n => Number.isFinite(n) ? n.toLocaleString('pt-BR', { maximumFractionDigits: 8 }) : '—';
 
-  function currentArbitrage() {
+  function getArbitrage() {
     const select = $('arbitrageSelect');
-    const text = String(select?.selectedOptions?.[0]?.textContent || '').trim();
-    const normalized = text.replace(/[‐‑‒–—−]/g, '-').replace(/\s+/g, ' ');
-    if (ARBS[normalized]) return { ...ARBS[normalized], name: normalized };
-
-    const parts = normalized.split(/[\/|]/).map(x => x.trim()).filter(Boolean);
-    if (parts.length >= 2) {
-      return { id: String(select?.value || 'current'), name: normalized, anchor: parts[0], assets: parts.slice(1, 3) };
-    }
-
-    const fallback = Object.values(ARBS)[0];
-    return { ...fallback, name: normalized || 'ADA / NIGHT / SNEK' };
+    const name = String(select?.selectedOptions?.[0]?.textContent || '').trim().replace(/\s+/g, ' ');
+    if (CONFIG[name]) return { ...CONFIG[name], name };
+    const parts = name.split('/').map(x => x.trim()).filter(Boolean);
+    if (parts.length >= 2) return { id: String(select?.value || 'current'), name, anchor: parts[0], assets: parts.slice(1, 3) };
+    return { ...CONFIG['ADA / NIGHT / SNEK'], name: 'ADA / NIGHT / SNEK' };
   }
 
-  function strategyOptions(arb) {
-    const [a, b] = arb.assets;
-    return [
-      `${arb.anchor} → ${a} → ${arb.anchor}`,
-      `${arb.anchor} → ${b} → ${arb.anchor}`,
-      `${a} → ${b} → ${arb.anchor}`,
-      `${b} → ${a} → ${arb.anchor}`,
-    ];
+  function strategies(a) {
+    const [x, y] = a.assets;
+    return [`${a.anchor} → ${x} → ${a.anchor}`, `${a.anchor} → ${y} → ${a.anchor}`, `${x} → ${y} → ${a.anchor}`, `${y} → ${x} → ${a.anchor}`];
   }
 
-  function initialAssetFor(strategy, arb) {
-    const [a, b] = arb.assets;
-    if (strategy === `${arb.anchor} → ${a} → ${arb.anchor}`) return a;
-    if (strategy === `${arb.anchor} → ${b} → ${arb.anchor}`) return b;
-    if (strategy === `${a} → ${b} → ${arb.anchor}`) return b;
-    if (strategy === `${b} → ${a} → ${arb.anchor}`) return a;
-    return a;
+  function initialAsset(strategy, a) {
+    const [x, y] = a.assets;
+    const s = strategies(a);
+    return strategy === s[0] ? x : strategy === s[1] ? y : strategy === s[2] ? y : x;
   }
 
-  function fmt(n) {
-    return Number.isFinite(n) ? n.toLocaleString('pt-BR', { maximumFractionDigits: 8 }) : '—';
-  }
-
-  function setNow(id) {
-    const input = $(id);
-    if (!input) return;
-    const d = new Date();
-    const p = n => String(n).padStart(2, '0');
-    input.value = `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
-  }
-
-  function updateDerivedFields() {
-    const arb = currentArbitrage();
-    const strategy = $('tradeVisualStrategy')?.value || strategyOptions(arb)[0];
-    const initialAsset = initialAssetFor(strategy, arb);
-    const anchorAmount = Number($('tradeVisualAnchorAmount')?.value);
-    const quantity = Number($('tradeVisualQuantity')?.value);
-    const exitAmount = Number($('tradeVisualExitAmount')?.value);
-
-    if ($('tradeVisualInitialAsset')) $('tradeVisualInitialAsset').value = initialAsset;
-    if ($('tradeVisualAnchorLabel')) $('tradeVisualAnchorLabel').textContent = `Quantidade utilizada (${arb.anchor})`;
-    if ($('tradeVisualQuantityLabel')) $('tradeVisualQuantityLabel').textContent = `Quantidade recebida (${initialAsset})`;
-    if ($('tradeVisualExitAmountLabel')) $('tradeVisualExitAmountLabel').textContent = `Quantidade recebida na âncora (${arb.anchor})`;
-
-    const entry = anchorAmount > 0 && quantity > 0 ? anchorAmount / quantity : null;
-    const exit = exitAmount > 0 && quantity > 0 ? exitAmount / quantity : null;
-    if ($('tradeVisualEntryDerived')) $('tradeVisualEntryDerived').innerHTML = `Preço efetivo de entrada: <strong>${entry == null ? '—' : `${fmt(entry)} ${arb.anchor}/${initialAsset}`}</strong>`;
-    if ($('tradeVisualExitDerived')) $('tradeVisualExitDerived').innerHTML = `Preço efetivo de saída: <strong>${exit == null ? '—' : `${fmt(exit)} ${arb.anchor}/${initialAsset}`}</strong>`;
-  }
-
-  function fillForm() {
-    const arb = currentArbitrage();
-    const aSel = $('tradeVisualArbitrage');
-    const strategy = $('tradeVisualStrategy');
-
-    if (aSel) {
-      aSel.innerHTML = Object.values(ARBS)
-        .map(a => `<option value="${a.id}" ${a.name === arb.name ? 'selected' : ''}>${a.name}</option>`)
-        .join('');
-      if (!aSel.value) aSel.value = arb.id;
-    }
-
-    const selectedArb = currentArbitrage();
-    if (strategy) {
-      strategy.innerHTML = strategyOptions(selectedArb)
-        .map(s => `<option value="${s}">${s}</option>`)
-        .join('');
-      strategy.selectedIndex = 0;
-    }
-
-    setNow('tradeVisualOpenedAt');
+  function refreshForm() {
+    const a = getArbitrage();
+    const arSel = $('tradeVisualArbitrage');
+    const stSel = $('tradeVisualStrategy');
+    if (!arSel || !stSel) return false;
+    arSel.innerHTML = `<option value="${a.id}">${a.name}</option>`;
+    const list = strategies(a);
+    stSel.innerHTML = list.map(s => `<option value="${s}">${s}</option>`).join('');
+    stSel.value = list[0];
+    const d = new Date(), p = n => String(n).padStart(2, '0');
+    if ($('tradeVisualOpenedAt')) $('tradeVisualOpenedAt').value = `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
     if ($('tradeVisualClosedAt')) $('tradeVisualClosedAt').value = '';
     if ($('tradeVisualAnchorAmount')) $('tradeVisualAnchorAmount').value = '';
     if ($('tradeVisualQuantity')) $('tradeVisualQuantity').value = '';
     if ($('tradeVisualExitAmount')) $('tradeVisualExitAmount').value = '';
     if ($('tradeVisualMessage')) $('tradeVisualMessage').textContent = '';
     if ($('tradeVisualResult')) $('tradeVisualResult').classList.add('hidden');
-    updateDerivedFields();
+    updateFormFields();
+    return true;
   }
 
-  function openModal() {
+  function updateFormFields() {
+    const a = getArbitrage();
+    const s = $('tradeVisualStrategy')?.value || strategies(a)[0];
+    const asset = initialAsset(s, a);
+    const cap = Number($('tradeVisualAnchorAmount')?.value);
+    const qty = Number($('tradeVisualQuantity')?.value);
+    const out = Number($('tradeVisualExitAmount')?.value);
+    if ($('tradeVisualInitialAsset')) $('tradeVisualInitialAsset').value = asset;
+    if ($('tradeVisualAnchorLabel')) $('tradeVisualAnchorLabel').textContent = `Quantidade utilizada (${a.anchor})`;
+    if ($('tradeVisualQuantityLabel')) $('tradeVisualQuantityLabel').textContent = `Quantidade recebida (${asset})`;
+    if ($('tradeVisualExitAmountLabel')) $('tradeVisualExitAmountLabel').textContent = `Quantidade recebida na âncora (${a.anchor})`;
+    if ($('tradeVisualEntryDerived')) $('tradeVisualEntryDerived').innerHTML = `Preço efetivo de entrada: <strong>${cap > 0 && qty > 0 ? `${fmt(cap / qty)} ${a.anchor}/${asset}` : '—'}</strong>`;
+    if ($('tradeVisualExitDerived')) $('tradeVisualExitDerived').innerHTML = `Preço efetivo de saída: <strong>${out > 0 && qty > 0 ? `${fmt(out / qty)} ${a.anchor}/${asset}` : '—'}</strong>`;
+  }
+
+  window.updateTradeVisualForm = updateFormFields;
+
+  window.openTradeVisualForm = function () {
+    if (!refreshForm()) return false;
     const modal = $('tradeVisualModal');
-    if (!modal) return;
-    fillForm();
+    if (!modal) return false;
     modal.classList.remove('hidden');
     modal.setAttribute('aria-hidden', 'false');
-  }
+    return false;
+  };
 
-  function closeModal() {
+  window.closeTradeVisualForm = function () {
     const modal = $('tradeVisualModal');
-    if (!modal) return;
+    if (!modal) return false;
     modal.classList.add('hidden');
     modal.setAttribute('aria-hidden', 'true');
-  }
+    return false;
+  };
 
-  function validateTrade(form) {
-    const arb = currentArbitrage();
-    const strategy = $('tradeVisualStrategy')?.value || strategyOptions(arb)[0];
-    const initialAsset = initialAssetFor(strategy, arb);
-    const openedAt = $('tradeVisualOpenedAt')?.value || '';
-    const closedAt = $('tradeVisualClosedAt')?.value || '';
-    const anchorAmount = Number($('tradeVisualAnchorAmount')?.value);
-    const quantity = Number($('tradeVisualQuantity')?.value);
-    const exitAmount = Number($('tradeVisualExitAmount')?.value);
-    const msg = $('tradeVisualMessage');
-    const result = $('tradeVisualResult');
-
-    if (!(anchorAmount > 0) || !(quantity > 0)) {
-      if (msg) msg.textContent = `Preencha a quantidade utilizada em ${arb.anchor} e a quantidade recebida em ${initialAsset}.`;
-      return;
+  window.validateTradeVisualForm = function (event) {
+    if (event) event.preventDefault();
+    const a = getArbitrage();
+    const strategy = $('tradeVisualStrategy')?.value || strategies(a)[0];
+    const asset = initialAsset(strategy, a);
+    const opened = $('tradeVisualOpenedAt')?.value || '';
+    const closed = $('tradeVisualClosedAt')?.value || '';
+    const cap = Number($('tradeVisualAnchorAmount')?.value);
+    const qty = Number($('tradeVisualQuantity')?.value);
+    const out = Number($('tradeVisualExitAmount')?.value);
+    const msg = $('tradeVisualMessage'), result = $('tradeVisualResult');
+    if (!(cap > 0) || !(qty > 0)) {
+      if (msg) msg.textContent = `Preencha a quantidade utilizada em ${a.anchor} e a quantidade recebida em ${asset}.`;
+      return false;
     }
-
-    if (closedAt || exitAmount > 0) {
-      if (!closedAt || !(exitAmount > 0)) {
-        if (msg) msg.textContent = 'Para um trade fechado, informe a data/hora de saída e a quantidade recebida na âncora.';
-        return;
-      }
-      if (new Date(closedAt) < new Date(openedAt)) {
-        if (msg) msg.textContent = 'A saída não pode ser anterior à entrada.';
-        return;
-      }
-      const entryPrice = anchorAmount / quantity;
-      const exitPrice = exitAmount / quantity;
-      const profit = exitAmount - anchorAmount;
-      const ret = profit / anchorAmount;
-      const durationHours = (new Date(closedAt) - new Date(openedAt)) / 36e5;
-      if (result) {
-        result.innerHTML = `<strong>Trade fechado validado</strong><br>${fmt(anchorAmount)} ${arb.anchor} → ${fmt(quantity)} ${initialAsset} → ${fmt(exitAmount)} ${arb.anchor}<br>Resultado: <strong>${fmt(profit)} ${arb.anchor}</strong> (${(ret * 100).toLocaleString('pt-BR', {maximumFractionDigits: 4)}%) · Duração: ${durationHours.toLocaleString('pt-BR', {maximumFractionDigits: 2})} h<br>Preço efetivo: entrada ${fmt(entryPrice)} → saída ${fmt(exitPrice)} ${arb.anchor}/${initialAsset}`;
-        result.classList.remove('hidden');
-      }
-      if (msg) msg.textContent = 'Validação concluída. Ainda não gravado no PostgreSQL.';
-      return;
+    if (closed || out > 0) {
+      if (!closed || !(out > 0)) { if (msg) msg.textContent = 'Para fechar, informe a data/hora de saída e a quantidade recebida na âncora.'; return false; }
+      if (new Date(closed) < new Date(opened)) { if (msg) msg.textContent = 'A saída não pode ser anterior à entrada.'; return false; }
+      const profit = out - cap, ret = profit / cap, hours = (new Date(closed) - new Date(opened)) / 36e5;
+      result.innerHTML = `<strong>Trade fechado validado</strong><br>${fmt(cap)} ${a.anchor} → ${fmt(qty)} ${asset} → ${fmt(out)} ${a.anchor}<br>Resultado: <strong>${fmt(profit)} ${a.anchor}</strong> (${(ret * 100).toLocaleString('pt-BR', { maximumFractionDigits: 4 })}%) · Duração: ${hours.toLocaleString('pt-BR', { maximumFractionDigits: 2 })} h`;
+    } else {
+      result.innerHTML = `<strong>Trade aberto validado</strong><br>${fmt(cap)} ${a.anchor} → ${fmt(qty)} ${asset}<br>Preço efetivo de entrada: <strong>${fmt(cap / qty)} ${a.anchor}/${asset}</strong>`;
     }
-
-    const entryPrice = anchorAmount / quantity;
-    if (result) {
-      result.innerHTML = `<strong>Trade aberto validado</strong><br>${fmt(anchorAmount)} ${arb.anchor} → ${fmt(quantity)} ${initialAsset}<br>Preço efetivo de entrada: <strong>${fmt(entryPrice)} ${arb.anchor}/${initialAsset}</strong>`;
-      result.classList.remove('hidden');
-    }
+    result.classList.remove('hidden');
     if (msg) msg.textContent = 'Validação concluída. Ainda não gravado no PostgreSQL.';
-  }
+    return false;
+  };
 
-  function bindDelegatedEvents() {
-    if (document.documentElement.dataset.tradesDelegated === 'true') return;
-    document.documentElement.dataset.tradesDelegated = 'true';
-
-    document.addEventListener('click', event => {
-      const newTrade = event.target.closest?.('#newTradeBtn');
-      if (newTrade) {
-        event.preventDefault();
-        openModal();
-        return;
-      }
-      const close = event.target.closest?.('[data-close-trade-modal="true"]');
-      if (close) {
-        event.preventDefault();
-        closeModal();
-      }
-    });
-
-    document.addEventListener('input', event => {
-      if (event.target.closest?.('#tradeVisualForm')) updateDerivedFields();
-    });
-    document.addEventListener('change', event => {
-      if (event.target.closest?.('#tradeVisualForm')) updateDerivedFields();
-      if (event.target.closest?.('#arbitrageSelect')) {
-        const context = $('tradesContext');
-        const arb = currentArbitrage();
-        if (context) context.textContent = `Acompanhamento de ${arb.name}`;
-      }
-    });
-
-    document.addEventListener('submit', event => {
-      if (event.target?.id === 'tradeVisualForm') {
-        event.preventDefault();
-        validateTrade(event.target);
-      }
-    });
-  }
-
-  bindDelegatedEvents();
+  // Keep the module alive even if the portal replaces parts of the DOM.
+  document.addEventListener('change', event => {
+    if (event.target?.id === 'tradeVisualStrategy') updateFormFields();
+  });
 })();
