@@ -2,8 +2,9 @@
 """Build the deployable static site.
 
 The existing portal remains the source of truth. The Trades markup is inserted
-at build time inside the main arbitrage grid, while trades-ui.js only binds
-behavior to the already-rendered elements. This keeps the core portal intact.
+at build time inside the main arbitrage grid, while trades-ui.js provides the
+full behavior. A small inline initializer is also embedded so the form can
+populate itself even if the external module is cached or delayed.
 """
 from __future__ import annotations
 
@@ -20,7 +21,7 @@ TRADES_MARKUP = r'''
 <section class="card trades-card" id="tradesPanel">
   <div class="section-head">
     <div><h2>Trades</h2><div class="note" id="tradesContext">Acompanhamento da arbitragem selecionada</div></div>
-    <button class="btn primary" id="newTradeBtn" type="button" onclick="document.getElementById('tradeVisualModal').classList.remove('hidden'); document.getElementById('tradeVisualModal').setAttribute('aria-hidden','false');">+ Novo trade</button>
+    <button class="btn primary" id="newTradeBtn" type="button" onclick="window.openTradeVisualForm && window.openTradeVisualForm()">+ Novo trade</button>
   </div>
   <div class="trades-subtitle">ABERTOS</div>
   <div class="trade-empty" id="tradesOpenEmpty">Nenhum trade aberto nesta arbitragem.</div>
@@ -29,33 +30,33 @@ TRADES_MARKUP = r'''
 </section>
 
 <div id="tradeVisualModal" class="trade-modal hidden" aria-hidden="true">
-  <div class="trade-modal-backdrop" data-close-trade-modal="true" onclick="document.getElementById('tradeVisualModal').classList.add('hidden'); document.getElementById('tradeVisualModal').setAttribute('aria-hidden','true');"></div>
+  <div class="trade-modal-backdrop" data-close-trade-modal="true" onclick="window.closeTradeVisualForm && window.closeTradeVisualForm()"></div>
   <div class="trade-dialog" role="dialog" aria-modal="true" aria-labelledby="tradeVisualTitle">
     <div class="section-head">
       <div><h2 id="tradeVisualTitle">Novo trade</h2><div class="note">Registro da operação real</div></div>
-      <button class="btn" type="button" data-close-trade-modal="true" onclick="document.getElementById('tradeVisualModal').classList.add('hidden'); document.getElementById('tradeVisualModal').setAttribute('aria-hidden','true');">Fechar</button>
+      <button class="btn" type="button" data-close-trade-modal="true" onclick="window.closeTradeVisualForm && window.closeTradeVisualForm()">Fechar</button>
     </div>
-    <form id="tradeVisualForm">
+    <form id="tradeVisualForm" onsubmit="return window.validateTradeVisualForm ? window.validateTradeVisualForm(event) : false;">
       <div class="trade-form-grid">
         <div class="field"><label for="tradeVisualArbitrage">Arbitragem</label><select id="tradeVisualArbitrage" required></select></div>
-        <div class="field"><label for="tradeVisualStrategy">Estratégia</label><select id="tradeVisualStrategy" required></select></div>
+        <div class="field"><label for="tradeVisualStrategy">Estratégia</label><select id="tradeVisualStrategy" required onchange="window.updateTradeVisualForm && window.updateTradeVisualForm()"></select></div>
         <div class="field"><label for="tradeVisualOpenedAt">Entrada</label><input id="tradeVisualOpenedAt" type="datetime-local" required></div>
-        <div class="field"><label id="tradeVisualAnchorLabel" for="tradeVisualAnchorAmount">Quantidade utilizada (ADA)</label><input id="tradeVisualAnchorAmount" type="number" min="0" step="any" required></div>
+        <div class="field"><label id="tradeVisualAnchorLabel" for="tradeVisualAnchorAmount">Quantidade utilizada (ADA)</label><input id="tradeVisualAnchorAmount" type="number" min="0" step="any" required oninput="window.updateTradeVisualForm && window.updateTradeVisualForm()"></div>
         <div class="field"><label>Ativo inicial da posição</label><div class="trade-readonly"><input id="tradeVisualInitialAsset" type="text" readonly></div></div>
-        <div class="field"><label id="tradeVisualQuantityLabel" for="tradeVisualQuantity">Quantidade recebida</label><input id="tradeVisualQuantity" type="number" min="0" step="any" required></div>
+        <div class="field"><label id="tradeVisualQuantityLabel" for="tradeVisualQuantity">Quantidade recebida</label><input id="tradeVisualQuantity" type="number" min="0" step="any" required oninput="window.updateTradeVisualForm && window.updateTradeVisualForm()"></div>
       </div>
       <div class="trade-derived" id="tradeVisualEntryDerived">Preço efetivo de entrada: <strong>—</strong></div>
       <div class="trade-section">
         <div class="section-head"><div><h2>Saída</h2><div class="note">Fechamento padrão = 100% da posição</div></div></div>
         <div class="trade-form-grid">
           <div class="field"><label for="tradeVisualClosedAt">Data/hora de saída</label><input id="tradeVisualClosedAt" type="datetime-local"></div>
-          <div class="field"><label id="tradeVisualExitAmountLabel" for="tradeVisualExitAmount">Quantidade recebida na âncora (ADA)</label><input id="tradeVisualExitAmount" type="number" min="0" step="any" placeholder="Preencher ao fechar"></div>
+          <div class="field"><label id="tradeVisualExitAmountLabel" for="tradeVisualExitAmount">Quantidade recebida na âncora (ADA)</label><input id="tradeVisualExitAmount" type="number" min="0" step="any" placeholder="Preencher ao fechar" oninput="window.updateTradeVisualForm && window.updateTradeVisualForm()"></div>
         </div>
         <div class="trade-derived" id="tradeVisualExitDerived">Preço efetivo de saída: <strong>—</strong></div>
       </div>
       <div class="trade-help">Entrada e saída usam os valores efetivamente executados. Taxas, slippage e variações ficam incorporados nos valores informados. “Cotação Agora” será usada apenas para simular o fechamento de um trade aberto; ela não altera o trade real.</div>
       <div id="tradeVisualResult" class="trade-result hidden"></div>
-      <div class="actions"><button class="btn primary" type="submit">Validar trade</button><button class="btn" type="button" data-close-trade-modal="true" onclick="document.getElementById('tradeVisualModal').classList.add('hidden'); document.getElementById('tradeVisualModal').setAttribute('aria-hidden','true');">Cancelar</button></div>
+      <div class="actions"><button class="btn primary" type="submit">Validar trade</button><button class="btn" type="button" data-close-trade-modal="true" onclick="window.closeTradeVisualForm && window.closeTradeVisualForm()">Cancelar</button></div>
       <div id="tradeVisualMessage" class="note" style="margin-top:10px"></div>
     </form>
   </div>
@@ -80,7 +81,65 @@ TRADES_MARKUP = r'''
   @media(max-width:700px){.trade-form-grid{grid-template-columns:1fr}}
 </style>
 
-<script src="trades-ui.js" defer></script>
+<script>
+(function(){
+  const ARBS={
+    'ADA / NIGHT / SNEK':{id:'arb-ada-night-snek',anchor:'ADA',assets:['NIGHT','SNEK']},
+    'SOL / BONK / WIF':{id:'arb-sol-bonk-wif',anchor:'SOL',assets:['BONK','WIF']}
+  };
+  const $=id=>document.getElementById(id);
+  const pad=n=>String(n).padStart(2,'0');
+  function arb(){
+    const s=$('arbitrageSelect');
+    const name=String(s?.selectedOptions?.[0]?.textContent||'').trim().replace(/\s+/g,' ');
+    if(ARBS[name])return {...ARBS[name],name};
+    const p=name.split('/').map(x=>x.trim()).filter(Boolean);
+    if(p.length>=2)return{id:String(s?.value||'current'),name,anchor:p[0],assets:p.slice(1)};
+    return{id:'arb-ada-night-snek',name:'ADA / NIGHT / SNEK',anchor:'ADA',assets:['NIGHT','SNEK']};
+  }
+  function strategies(a){const[x,y]=a.assets;return[`${a.anchor} → ${x} → ${a.anchor}`,`${a.anchor} → ${y} → ${a.anchor}`,`${x} → ${y} → ${a.anchor}`,`${y} → ${x} → ${a.anchor}`];}
+  function initialAsset(strategy,a){const[x,y]=a.assets;if(strategy===strategies(a)[0])return x;if(strategy===strategies(a)[1])return y;if(strategy===strategies(a)[2])return y;return x;}
+  function nowLocal(){const d=new Date();return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;}
+  function fmt(n){return Number.isFinite(n)?n.toLocaleString('pt-BR',{maximumFractionDigits:8}):'—';}
+  window.updateTradeVisualForm=function(){
+    const a=arb();
+    const st=$('tradeVisualStrategy');
+    if(!st)return;
+    const s=st.value||strategies(a)[0];
+    const asset=initialAsset(s,a);
+    $('tradeVisualInitialAsset').value=asset;
+    $('tradeVisualAnchorLabel').textContent=`Quantidade utilizada (${a.anchor})`;
+    $('tradeVisualQuantityLabel').textContent=`Quantidade recebida (${asset})`;
+    $('tradeVisualExitAmountLabel').textContent=`Quantidade recebida na âncora (${a.anchor})`;
+    const cap=Number($('tradeVisualAnchorAmount').value), qty=Number($('tradeVisualQuantity').value), exit=Number($('tradeVisualExitAmount').value);
+    const ep=cap>0&&qty>0?cap/qty:null, xp=exit>0&&qty>0?exit/qty:null;
+    $('tradeVisualEntryDerived').innerHTML=`Preço efetivo de entrada: <strong>${ep==null?'—':fmt(ep)+' '+a.anchor+'/'+asset}</strong>`;
+    $('tradeVisualExitDerived').innerHTML=`Preço efetivo de saída: <strong>${xp==null?'—':fmt(xp)+' '+a.anchor+'/'+asset}</strong>`;
+  };
+  window.openTradeVisualForm=function(){
+    const a=arb(), st=$('tradeVisualStrategy'), as=$('tradeVisualArbitrage');
+    if(as)as.innerHTML=`<option value="${a.id}">${a.name}</option>`;
+    if(st)st.innerHTML=strategies(a).map(x=>`<option value="${x}">${x}</option>`).join('');
+    $('tradeVisualOpenedAt').value=nowLocal();
+    $('tradeVisualClosedAt').value='';$('tradeVisualAnchorAmount').value='';$('tradeVisualQuantity').value='';$('tradeVisualExitAmount').value='';
+    $('tradeVisualMessage').textContent='';$('tradeVisualResult').classList.add('hidden');
+    window.updateTradeVisualForm();
+    const m=$('tradeVisualModal');m.classList.remove('hidden');m.setAttribute('aria-hidden','false');
+  };
+  window.closeTradeVisualForm=function(){const m=$('tradeVisualModal');if(m){m.classList.add('hidden');m.setAttribute('aria-hidden','true');}};
+  window.validateTradeVisualForm=function(e){
+    if(e)e.preventDefault();
+    const a=arb(), s=$('tradeVisualStrategy').value||strategies(a)[0], asset=initialAsset(s,a), opened=$('tradeVisualOpenedAt').value, closed=$('tradeVisualClosedAt').value;
+    const cap=Number($('tradeVisualAnchorAmount').value), qty=Number($('tradeVisualQuantity').value), exit=Number($('tradeVisualExitAmount').value), msg=$('tradeVisualMessage'), res=$('tradeVisualResult');
+    if(!(cap>0)||!(qty>0)){msg.textContent=`Preencha a quantidade utilizada em ${a.anchor} e a quantidade recebida em ${asset}.`;return false;}
+    if(closed||exit>0){if(!closed||!(exit>0)){msg.textContent='Para um trade fechado, informe a data/hora de saída e a quantidade recebida na âncora.';return false;}if(new Date(closed)<new Date(opened)){msg.textContent='A saída não pode ser anterior à entrada.';return false;}const p1=cap/qty,p2=exit/qty,profit=exit-cap,ret=profit/cap,h=(new Date(closed)-new Date(opened))/36e5;res.innerHTML=`<strong>Trade fechado validado</strong><br>${fmt(cap)} ${a.anchor} → ${fmt(qty)} ${asset} → ${fmt(exit)} ${a.anchor}<br>Resultado: <strong>${fmt(profit)} ${a.anchor}</strong> (${(ret*100).toLocaleString('pt-BR',{maximumFractionDigits:4)}%) · Duração: ${h.toLocaleString('pt-BR',{maximumFractionDigits:2})} h<br>Preço efetivo: entrada ${fmt(p1)} → saída ${fmt(p2)} ${a.anchor}/${asset}`;
+    }else{const p=cap/qty;res.innerHTML=`<strong>Trade aberto validado</strong><br>${fmt(cap)} ${a.anchor} → ${fmt(qty)} ${asset}<br>Preço efetivo de entrada: <strong>${fmt(p)} ${a.anchor}/${asset}</strong>`;}
+    res.classList.remove('hidden');msg.textContent='Validação concluída. Ainda não gravado no PostgreSQL.';return false;
+  };
+})();
+</script>
+
+<script src="trades-ui.js?v=20260829" defer></script>
 '''
 
 
@@ -91,36 +150,27 @@ def build() -> None:
         raise SystemExit("trades-ui.js não encontrado")
     if not SUPABASE_CONFIG.exists():
         raise SystemExit("supabase/config.js não encontrado")
-
     if DIST.exists():
         shutil.rmtree(DIST)
     DIST.mkdir(parents=True)
-
     for name in ["index.html", "data.csv", "capture-log.json", "config.json"]:
-        src = ROOT / name
-        if src.exists():
-            shutil.copy2(src, DIST / name)
-
+        src=ROOT/name
+        if src.exists(): shutil.copy2(src,DIST/name)
     for path in ROOT.glob("favicon*"):
-        if path.is_file():
-            shutil.copy2(path, DIST / path.name)
-
-    shutil.copy2(TRADES_UI_JS, DIST / "trades-ui.js")
-    (DIST / "supabase").mkdir()
-    shutil.copy2(SUPABASE_CONFIG, DIST / "supabase" / "config.js")
-
-    html = SOURCE_INDEX.read_text(encoding="utf-8")
-    marker = '</div>\n\n  <div class="section metrics" id="metrics"></div>'
+        if path.is_file(): shutil.copy2(path,DIST/path.name)
+    shutil.copy2(TRADES_UI_JS,DIST/"trades-ui.js")
+    (DIST/"supabase").mkdir()
+    shutil.copy2(SUPABASE_CONFIG,DIST/"supabase"/"config.js")
+    html=SOURCE_INDEX.read_text(encoding="utf-8")
+    marker='</div>\n\n  <div class="section metrics" id="metrics"></div>'
     if marker in html and 'id="tradesPanel"' not in html:
-        html = html.replace(marker, TRADES_MARKUP + '\n</div>\n\n  <div class="section metrics" id="metrics"></div>', 1)
+        html=html.replace(marker,TRADES_MARKUP+'\n</div>\n\n  <div class="section metrics" id="metrics"></div>',1)
     elif 'id="tradesPanel"' not in html:
-        html = html.replace('</body>', TRADES_MARKUP + '\n</body>', 1)
+        html=html.replace('</body>',TRADES_MARKUP+'\n</body>',1)
     else:
         raise SystemExit("index.html já contém tradesPanel; remova o duplicado antes do build")
-    (DIST / "index.html").write_text(html, encoding="utf-8")
-
+    (DIST/"index.html").write_text(html,encoding="utf-8")
     print(f"Built deployable site in {DIST}")
-
 
 if __name__ == "__main__":
     build()
