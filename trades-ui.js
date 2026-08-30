@@ -13,9 +13,14 @@
     const text = String(select?.selectedOptions?.[0]?.textContent || '').trim();
     const normalized = text.replace(/[‐‑‒–—−]/g, '-').replace(/\s+/g, ' ');
     if (ARBS[normalized]) return { ...ARBS[normalized], name: normalized };
+
     const parts = normalized.split(/[\/|]/).map(x => x.trim()).filter(Boolean);
-    if (parts.length >= 2) return { id: String(select?.value || 'current'), name: normalized, anchor: parts[0], assets: parts.slice(1) };
-    return { id: String(select?.value || 'current'), name: normalized || 'Arbitragem selecionada', anchor: 'ADA', assets: ['NIGHT', 'SNEK'] };
+    if (parts.length >= 2) {
+      return { id: String(select?.value || 'current'), name: normalized, anchor: parts[0], assets: parts.slice(1, 3) };
+    }
+
+    const fallback = Object.values(ARBS)[0];
+    return { ...fallback, name: normalized || 'ADA / NIGHT / SNEK' };
   }
 
   function strategyOptions(arb) {
@@ -41,6 +46,14 @@
     return Number.isFinite(n) ? n.toLocaleString('pt-BR', { maximumFractionDigits: 8 }) : '—';
   }
 
+  function setNow(id) {
+    const input = $(id);
+    if (!input) return;
+    const d = new Date();
+    const p = n => String(n).padStart(2, '0');
+    input.value = `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+  }
+
   function updateDerivedFields() {
     const arb = currentArbitrage();
     const strategy = $('tradeVisualStrategy')?.value || strategyOptions(arb)[0];
@@ -60,20 +73,26 @@
     if ($('tradeVisualExitDerived')) $('tradeVisualExitDerived').innerHTML = `Preço efetivo de saída: <strong>${exit == null ? '—' : `${fmt(exit)} ${arb.anchor}/${initialAsset}`}</strong>`;
   }
 
-  function setNow(id) {
-    const input = $(id);
-    if (!input) return;
-    const d = new Date();
-    const p = n => String(n).padStart(2, '0');
-    input.value = `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
-  }
-
   function fillForm() {
     const arb = currentArbitrage();
     const aSel = $('tradeVisualArbitrage');
     const strategy = $('tradeVisualStrategy');
-    if (aSel) aSel.innerHTML = `<option value="${arb.id}">${arb.name}</option>`;
-    if (strategy) strategy.innerHTML = strategyOptions(arb).map(s => `<option value="${s}">${s}</option>`).join('');
+
+    if (aSel) {
+      aSel.innerHTML = Object.values(ARBS)
+        .map(a => `<option value="${a.id}" ${a.name === arb.name ? 'selected' : ''}>${a.name}</option>`)
+        .join('');
+      if (!aSel.value) aSel.value = arb.id;
+    }
+
+    const selectedArb = currentArbitrage();
+    if (strategy) {
+      strategy.innerHTML = strategyOptions(selectedArb)
+        .map(s => `<option value="${s}">${s}</option>`)
+        .join('');
+      strategy.selectedIndex = 0;
+    }
+
     setNow('tradeVisualOpenedAt');
     if ($('tradeVisualClosedAt')) $('tradeVisualClosedAt').value = '';
     if ($('tradeVisualAnchorAmount')) $('tradeVisualAnchorAmount').value = '';
@@ -85,9 +104,9 @@
   }
 
   function openModal() {
-    fillForm();
     const modal = $('tradeVisualModal');
     if (!modal) return;
+    fillForm();
     modal.classList.remove('hidden');
     modal.setAttribute('aria-hidden', 'false');
   }
@@ -184,24 +203,5 @@
     });
   }
 
-  function refreshContext() {
-    const arb = currentArbitrage();
-    const context = $('tradesContext');
-    if (context) context.textContent = arb.name ? `Acompanhamento de ${arb.name}` : 'Acompanhamento da arbitragem selecionada';
-  }
-
-  function init() {
-    if (!$('tradesPanel') || !$('tradeVisualModal')) return false;
-    bindDelegatedEvents();
-    refreshContext();
-    return true;
-  }
-
-  function wait(n = 100) {
-    if (init()) return;
-    if (n > 0) setTimeout(() => wait(n - 1), 100);
-  }
-
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => wait(), { once: true });
-  else wait();
+  bindDelegatedEvents();
 })();
