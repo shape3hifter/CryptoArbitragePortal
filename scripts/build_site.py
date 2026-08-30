@@ -20,7 +20,7 @@ TRADES_MARKUP = r'''
 <section class="card trades-card" id="tradesPanel">
   <div class="section-head">
     <div><h2>Trades</h2><div class="note" id="tradesContext">Acompanhamento da arbitragem selecionada</div></div>
-    <button class="btn primary" id="newTradeBtn" type="button">+ Novo trade</button>
+    <button class="btn primary" id="newTradeBtn" type="button" onclick="document.getElementById('tradeVisualModal').classList.remove('hidden'); document.getElementById('tradeVisualModal').setAttribute('aria-hidden','false');">+ Novo trade</button>
   </div>
   <div class="trades-subtitle">ABERTOS</div>
   <div class="trade-empty" id="tradesOpenEmpty">Nenhum trade aberto nesta arbitragem.</div>
@@ -29,11 +29,11 @@ TRADES_MARKUP = r'''
 </section>
 
 <div id="tradeVisualModal" class="trade-modal hidden" aria-hidden="true">
-  <div class="trade-modal-backdrop" data-close-trade-modal="true"></div>
+  <div class="trade-modal-backdrop" data-close-trade-modal="true" onclick="document.getElementById('tradeVisualModal').classList.add('hidden'); document.getElementById('tradeVisualModal').setAttribute('aria-hidden','true');"></div>
   <div class="trade-dialog" role="dialog" aria-modal="true" aria-labelledby="tradeVisualTitle">
     <div class="section-head">
       <div><h2 id="tradeVisualTitle">Novo trade</h2><div class="note">Registro da operação real</div></div>
-      <button class="btn" type="button" data-close-trade-modal="true">Fechar</button>
+      <button class="btn" type="button" data-close-trade-modal="true" onclick="document.getElementById('tradeVisualModal').classList.add('hidden'); document.getElementById('tradeVisualModal').setAttribute('aria-hidden','true');">Fechar</button>
     </div>
     <form id="tradeVisualForm">
       <div class="trade-form-grid">
@@ -55,14 +55,14 @@ TRADES_MARKUP = r'''
       </div>
       <div class="trade-help">Entrada e saída usam os valores efetivamente executados. Taxas, slippage e variações ficam incorporados nos valores informados. “Cotação Agora” será usada apenas para simular o fechamento de um trade aberto; ela não altera o trade real.</div>
       <div id="tradeVisualResult" class="trade-result hidden"></div>
-      <div class="actions"><button class="btn primary" type="submit">Validar trade</button><button class="btn" type="button" data-close-trade-modal="true">Cancelar</button></div>
+      <div class="actions"><button class="btn primary" type="submit">Validar trade</button><button class="btn" type="button" data-close-trade-modal="true" onclick="document.getElementById('tradeVisualModal').classList.add('hidden'); document.getElementById('tradeVisualModal').setAttribute('aria-hidden','true');">Cancelar</button></div>
       <div id="tradeVisualMessage" class="note" style="margin-top:10px"></div>
     </form>
   </div>
 </div>
 
 <style id="trades-ui-style">
-  .trades-card{height:100%;min-height:100%}
+  .trades-card{grid-column:2;grid-row:1;height:100%;min-height:100%}
   .trades-subtitle{font-size:11px;color:var(--muted);font-weight:700;margin:10px 0 4px}
   .trade-empty{padding:14px;text-align:center;color:var(--muted);border:1px dashed var(--border);border-radius:12px}
   .trade-modal{position:fixed;inset:0;z-index:1000;display:flex;align-items:center;justify-content:center;padding:18px}
@@ -76,6 +76,7 @@ TRADES_MARKUP = r'''
   .trade-help{margin-top:10px;font-size:11px;line-height:1.5;color:var(--muted);background:var(--panel2);border:1px solid var(--border);border-radius:12px;padding:10px}
   .trade-result{margin-top:10px;padding:10px;border-radius:12px;border:1px solid var(--border);background:rgba(104,211,145,.05);font-size:12px;line-height:1.5}
   .trade-readonly input{opacity:.85}
+  @media(max-width:900px){.trades-card{grid-column:1;grid-row:auto}}
   @media(max-width:700px){.trade-form-grid{grid-template-columns:1fr}}
 </style>
 
