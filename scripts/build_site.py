@@ -2,8 +2,8 @@
 """Build the deployable static site.
 
 The existing portal remains the source of truth. The Trades markup is inserted
-at build time in a deterministic location, while trades-ui.js only binds
-behavior to the already-rendered elements. This avoids runtime DOM races.
+at build time inside the main arbitrage grid, while trades-ui.js only binds
+behavior to the already-rendered elements. This keeps the core portal intact.
 """
 from __future__ import annotations
 
@@ -111,7 +111,7 @@ def build() -> None:
     html = SOURCE_INDEX.read_text(encoding="utf-8")
     marker = '</div>\n\n  <div class="section metrics" id="metrics"></div>'
     if marker in html and 'id="tradesPanel"' not in html:
-        html = html.replace(marker, '</div>\n\n  ' + TRADES_MARKUP + '\n\n  <div class="section metrics" id="metrics"></div>', 1)
+        html = html.replace(marker, TRADES_MARKUP + '\n</div>\n\n  <div class="section metrics" id="metrics"></div>', 1)
     elif 'id="tradesPanel"' not in html:
         html = html.replace('</body>', TRADES_MARKUP + '\n</body>', 1)
     else:
