@@ -6,8 +6,10 @@ Behavior:
 - Treats 21:00 BRT of the most recently completed day as the latest eligible snapshot.
 - If the latest eligible snapshot is already complete, exits successfully without
   changing data.
-- If snapshots are missing or incomplete, fills every missing date through the
-  latest eligible snapshot, preserving dates that are already complete.
+- Fills missing/incomplete snapshots starting from the latest date already present
+  in data.csv through the latest eligible snapshot. This avoids trying to backfill
+  the entire historical range when an asset was not yet available on older dates.
+- Preserves all existing complete snapshots.
 
 The actual per-date capture remains implemented by capture_prices.py so there is
 one canonical source for CMC/Frankfurter retrieval and CSV writing.
@@ -117,7 +119,7 @@ def main() -> int:
         run_one(latest)
         return 0
 
-    existing_dates = []
+    existing_dates: list[date] = []
     for row in rows:
         value = row.get("date")
         if value:
@@ -126,12 +128,20 @@ def main() -> int:
             except ValueError:
                 pass
 
-    first_date = min(existing_dates) if existing_dates else latest
-    if first_date > latest:
-        first_date = latest
+    if not existing_dates:
+        print(f"Nenhuma data válida encontrada; capturando {latest.isoformat()} {ref_time} BRT.")
+        run_one(latest)
+        return 0
+
+    # Operational backfill starts from the most recent date already represented
+    # in the file. This is the intended behavior for repairing recent gaps while
+    # avoiding attempts to reconstruct obsolete historical ranges.
+    start_date = max(existing_dates)
+    if start_date > latest:
+        start_date = latest
 
     missing_dates: list[date] = []
-    day = first_date
+    day = start_date
     while day <= latest:
         complete, _missing = date_status(rows, expected, day, ref_time)
         if not complete:
