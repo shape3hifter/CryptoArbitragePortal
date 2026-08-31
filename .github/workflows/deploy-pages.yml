@@ -25,6 +25,19 @@ jobs:
       - name: Build deployable site
         run: python scripts/build_site.py
 
+      - name: Install deterministic portal runtime fixes
+        run: |
+          cp runtime-fixes.js dist/runtime-fixes.js
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('dist/index.html')
+          html = p.read_text(encoding='utf-8')
+          tag = '<script src="runtime-fixes.js?v=20260831-1" defer></script>'
+          if tag not in html:
+              html = html.replace('</body>', f'{tag}\n</body>', 1)
+          p.write_text(html, encoding='utf-8')
+          PY
+
       - name: Install deterministic Trades launcher
         run: |
           cp trades-launcher.js dist/trades-launcher.js
