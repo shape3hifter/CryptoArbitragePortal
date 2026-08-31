@@ -18,7 +18,7 @@ TRADES_MARKUP=r'''
  <div class="trade-modal-backdrop" onclick="window.closeTradeVisualForm()"></div>
  <div class="trade-dialog" role="dialog" aria-modal="true">
   <div class="section-head"><div><h2>Novo trade</h2><div class="note">Registro da operação real</div></div><button class="btn" type="button" onclick="window.closeTradeVisualForm()">Fechar</button></div>
-  <form id="tradeVisualForm" onsubmit="return window.validateTradeVisualForm(event)">
+  <form id="tradeVisualForm" onsubmit="window.validateTradeVisualForm(event); return false;">
    <div class="trade-form-grid">
     <div class="field"><label for="tradeVisualArbitrage">Arbitragem</label><select id="tradeVisualArbitrage" required></select></div>
     <div class="field"><label for="tradeVisualStrategy">Estratégia</label><select id="tradeVisualStrategy" required onchange="window.updateTradeVisualForm()"></select></div>
@@ -37,7 +37,7 @@ TRADES_MARKUP=r'''
    </div>
    <div class="trade-help">Entrada e saída usam os valores efetivamente executados. Taxas, slippage e variações ficam incorporados nos valores informados. “Cotação Agora” será usada apenas para simular o fechamento de um trade aberto.</div>
    <div id="tradeVisualResult" class="trade-result hidden"></div>
-   <div class="actions"><button class="btn primary" type="submit">Validar trade</button><button class="btn" type="button" onclick="window.closeTradeVisualForm()">Cancelar</button></div>
+   <div class="actions"><button class="btn primary" type="submit">Salvar trade</button><button class="btn" type="button" onclick="window.closeTradeVisualForm()">Cancelar</button></div>
    <div id="tradeVisualMessage" class="note" style="margin-top:10px"></div>
   </form>
  </div>
@@ -58,7 +58,7 @@ TRADES_MARKUP=r'''
  window.validateTradeVisualForm=function(e){e.preventDefault();const a=arb(),s=$('tradeVisualStrategy').value||sts(a)[0],asset=ia(s,a),opened=$('tradeVisualOpenedAt').value,closed=$('tradeVisualClosedAt').value,cap=Number($('tradeVisualAnchorAmount').value),qty=Number($('tradeVisualQuantity').value),out=Number($('tradeVisualExitAmount').value),m=$('tradeVisualMessage'),r=$('tradeVisualResult');if(!(cap>0)||!(qty>0)){m.textContent=`Preencha a quantidade utilizada em ${a.anchor} e a quantidade recebida em ${asset}.`;return false}if(closed||out>0){if(!closed||!(out>0)){m.textContent='Para fechar, informe a data/hora de saída e a quantidade recebida na âncora.';return false}if(new Date(closed)<new Date(opened)){m.textContent='A saída não pode ser anterior à entrada.';return false}const profit=out-cap,ret=profit/cap,h=(new Date(closed)-new Date(opened))/36e5;r.innerHTML=`<strong>Trade fechado validado</strong><br>${fmt(cap)} ${a.anchor} → ${fmt(qty)} ${asset} → ${fmt(out)} ${a.anchor}<br>Resultado: <strong>${fmt(profit)} ${a.anchor}</strong> (${(ret*100).toLocaleString('pt-BR',{maximumFractionDigits:4)}%) · Duração: ${h.toLocaleString('pt-BR',{maximumFractionDigits:2})} h`;}else{r.innerHTML=`<strong>Trade aberto validado</strong><br>${fmt(cap)} ${a.anchor} → ${fmt(qty)} ${asset}<br>Preço efetivo de entrada: <strong>${fmt(cap/qty)} ${a.anchor}/${asset}</strong>`}r.classList.remove('hidden');m.textContent='Validação concluída. Ainda não gravado no PostgreSQL.';return false;};
 })();
 </script>
-<script src="trades-ui.js?v=20260829" defer></script>
+<script src="trades-ui.js?v=20260831" defer></script>
 '''
 def build():
  if not SOURCE_INDEX.exists() or not TRADES_UI_JS.exists() or not SUPABASE_CONFIG.exists(): raise SystemExit('Arquivos necessários não encontrados')
