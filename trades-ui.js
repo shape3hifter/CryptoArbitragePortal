@@ -6,8 +6,10 @@
     'ADA / NIGHT / SNEK': { id: 'arb-ada-night-snek', name: 'ADA / NIGHT / SNEK', anchor: 'ADA', assets: ['NIGHT', 'SNEK'] },
     'SOL / BONK / WIF': { id: 'arb-sol-bonk-wif', name: 'SOL / BONK / WIF', anchor: 'SOL', assets: ['BONK', 'WIF'] }
   };
-  const LIVE_CMC_BASE = 'https://pro-api.coinmarketcap.com/public-api/v1/simple/price';
-  const CMC_IDS = { ADA: 2010, NIGHT: 39064, SNEK: 25264, SOL: 5426, BONK: 23095, WIF: 28752 };
+  // Live quotes are fetched from CoinGecko's keyless public API.
+  // Daily historical snapshots continue to use CoinMarketCap in the capture pipeline.
+  const LIVE_CG_BASE = 'https://api.coingecko.com/api/v3/simple/price';
+  const CG_IDS = { ADA: 'cardano', NIGHT: 'midnight-3', SNEK: 'snek', SOL: 'solana', BONK: 'bonk', WIF: 'dogwifcoin' };
   const SESSION_KEY = 'cryptoArbSupabaseSession';
   let session = loadSession();
   let simulationState = null;
@@ -37,9 +39,9 @@
     const s = strategies(a);
     return strategy === s[0] ? x : strategy === s[1] ? y : strategy === s[2] ? y : x;
   }
-  function fmt(value) {
+  function fmt(value, maxFractionDigits = 8) {
     const n = Number(value);
-    return Number.isFinite(n) ? n.toLocaleString('pt-BR', { maximumFractionDigits: 8 }) : '—';
+    return Number.isFinite(n) ? n.toLocaleString('pt-BR', { maximumFractionDigits: maxFractionDigits }) : '—';
   }
   function localDate(value = new Date()) {
     const pad = n => String(n).padStart(2, '0');
@@ -126,7 +128,8 @@
   async function signup() {
     const msg = $('authMsg'); msg.textContent = 'Criando conta…';
     try {
-      const b = await api('/auth/v1/signup', { method: 'POST', body: JSON.stringify({ email: $('authEmail').value.trim(), password: $('authPassword').value }) }, false);
+      const redirectTo = `${window.location.origin}${window.location.pathname}`;
+      const b = await api('/auth/v1/signup', { method: 'POST', body: JSON.stringify({ email: $('authEmail').value.trim(), password: $('authPassword').value, options: { emailRedirectTo: redirectTo } }) }, false);
       if (b?.access_token) {
         saveSession({ access_token: b.access_token, refresh_token: b.refresh_token, expires_at: b.expires_at, user: b.user });
         $('tradeAuthModal').classList.add('hidden'); authUi(); await renderTrades();
@@ -237,25 +240,31 @@
   }
   function assetId(symbol) {
     const s = String(symbol || '').toUpperCase();
-    const id = CMC_IDS[s];
-    return Number.isInteger(id) ? id : null;
+    const id = CG_IDS[s];
+    return id || null;
   }
   async function fetchLivePrices(symbols) {
     const normalized = [...new Set(symbols.map(s => String(s || '').toUpperCase()))];
     const ids = normalized.map(assetId);
-    if (ids.some(id => id == null)) throw new Error(`Não há CoinMarketCap ID configurado para ${normalized.find((s,i)=>ids[i]==null) || 'um dos ativos'}.`);
-    const url = `${LIVE_CMC_BASE}?ids=${ids.join(',')}&convert=USD`;
-    const res = await fetch('https://corsproxy.io/?url=' + encodeURIComponent(url), { cache: 'no-store' });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (ids.some(id => !id)) {
+      const symbol = normalized.find((s, i) => !ids[i]);
+      throw new Error(`Não há CoinGecko ID configurado para ${symbol || 'um dos ativos'}.`);
+    }
+    const url = `${LIVE_CG_BASE}?ids=${encodeURIComponent(ids.join(','))}&vs_currencies=usd`;
+    const res = await fetch(url, { cache: 'no-store', headers: { Accept: 'application/json' } });
+    if (!res.ok) {
+      if (res.status === 429) throw new Error('Limite temporário da consulta de cotação. Tente novamente em alguns segundos.');
+      throw new Error(`HTTP ${res.status}`);
+    }
     const payload = await res.json();
-    const list = Array.isArray(payload?.data) ? payload.data : [];
     const out = {};
     normalized.forEach((symbol, i) => {
-      const item = list.find(x => Number(x?.id) === ids[i]);
-      const price = Number(item?.price);
+      const row = payload?.[ids[i]];
+      const price = Number(row?.usd);
       if (Number.isFinite(price) && price > 0) out[symbol] = price;
     });
-    if (normalized.some(s => !Number.isFinite(out[s]))) throw new Error('A cotação atual não está disponível para todos os ativos do trade.');
+    const missing = normalized.filter(s => !Number.isFinite(out[s]));
+    if (missing.length) throw new Error(`Cotação não disponível para ${missing.join(', ')} agora.`);
     return out;
   }
   function renderSimulationLoading(t) {
@@ -318,59 +327,78 @@
       const rows = await api(`/rest/v1/trades?select=*&arbitrage_id=eq.${encodeURIComponent(currentArb().id)}&order=opened_at.desc`);
       const openRows = rows.filter(t => !t.closed_at);
       const closedRows = rows.filter(t => t.closed_at);
-      if (openRows.length) { open.textContent = ''; openRows.forEach(t => open.before(renderRow(t))); } else open.textContent = 'Nenhum trade aberto nesta arbitragem.';
-      if (closedRows.length) { closed.textContent = ''; closedRows.forEach(t => closed.before(renderRow(t))); } else closed.textContent = 'Nenhum trade fechado nesta arbitragem.';
-    } catch (e) { open.textContent = `Erro ao carregar trades: ${e.message}`; closed.textContent = ''; }
+      open.textContent = openRows.length ? '' : 'Nenhum trade aberto nesta arbitragem.';
+      closed.textContent = closedRows.length ? '' : 'Nenhum trade fechado nesta arbitragem.';
+      openRows.forEach(t => open.before(tradeRow(t, false)));
+      closedRows.forEach(t => closed.before(tradeRow(t, true)));
+    } catch (e) {
+      const message = e?.message || 'Erro ao carregar trades.';
+      open.textContent = message;
+      closed.textContent = '';
+    }
   }
 
-  function renderRow(t) {
-    const isClosed = !!t.closed_at;
-    const profit = isClosed ? Number(t.closed_anchor_amount) - Number(t.initial_anchor_amount) : 0;
-    const pct = isClosed && Number(t.initial_anchor_amount) ? 100 * profit / Number(t.initial_anchor_amount) : 0;
+  function tradeRow(t, closed) {
+    const a = ARBS[t.arbitrage_name] || currentArb();
     const row = document.createElement('div');
     row.className = 'trade-row';
-    row.style.cssText = 'padding:10px 0;border-bottom:1px solid var(--border);font-size:12px';
-    row.innerHTML = `<div style="display:flex;justify-content:space-between;gap:10px"><div><strong>${t.strategy}</strong><br><span class="note">${fmt(t.initial_anchor_amount)} ${t.anchor_symbol} → ${fmt(t.current_quantity)} ${t.current_asset}${isClosed ? ` → ${fmt(t.closed_anchor_amount)} ${t.anchor_symbol}` : ''}</span></div><div style="text-align:right"><strong>${isClosed ? `${fmt(profit)} ${t.anchor_symbol}` : 'ABERTO'}</strong><br><span class="note">${isClosed ? `${pct.toLocaleString('pt-BR',{maximumFractionDigits:2})}%` : new Date(t.opened_at).toLocaleString('pt-BR')}</span></div></div><div class="actions" style="justify-content:flex-end;margin-top:6px"><button class="btn" data-edit>Editar</button><button class="btn danger" data-delete>Excluir</button>${isClosed ? '' : '<button class="trade-sim-btn" data-simulate>Simular fechamento</button><button class="btn primary" data-close>Fechar</button>'}</div>`;
-    row.querySelector('[data-edit]').onclick = () => editTrade(t);
-    row.querySelector('[data-delete]').onclick = () => deleteTrade(t.id);
-    row.querySelector('[data-simulate]')?.addEventListener('click', () => simulateCloseTrade(t));
-    row.querySelector('[data-close]')?.addEventListener('click', () => closeTrade(t));
+    const cap = Number(t.initial_anchor_amount);
+    const qty = Number(t.current_quantity);
+    const out = Number(t.closed_anchor_amount);
+    const asset = String(t.current_asset || '').toUpperCase();
+    const anchor = String(t.anchor_symbol || a.anchor).toUpperCase();
+    const profit = closed ? out - cap : null;
+    const pct = closed && cap > 0 ? (profit / cap) * 100 : null;
+    row.innerHTML = `<div><strong>${t.strategy}</strong><div class="note">${fmt(cap)} ${anchor} → ${fmt(qty)} ${asset}${closed ? ` → ${fmt(out)} ${anchor}` : ''}</div></div><div class="trade-row-side"><strong>${closed ? `${fmt(profit)} ${anchor}` : 'ABERTO'}</strong>${closed ? `<span class="note">${pct.toLocaleString('pt-BR',{maximumFractionDigits:4})}%</span>` : `<span class="note">${new Date(t.opened_at).toLocaleString('pt-BR')}</span>`}<div class="actions" style="margin-top:4px"><button class="btn" data-action="edit" type="button">Editar</button><button class="btn danger" data-action="delete" type="button">Excluir</button>${closed ? '' : '<button class="btn primary" data-action="simulate" type="button">Simular fechamento</button><button class="btn primary" data-action="close" type="button">Fechar</button>'}</div></div>`;
+    row.querySelector('[data-action="edit"]').onclick = () => editTrade(t);
+    row.querySelector('[data-action="delete"]').onclick = () => deleteTrade(t);
+    row.querySelector('[data-action="simulate"]')?.addEventListener('click', () => simulateCloseTrade(t));
+    row.querySelector('[data-action="close"]')?.addEventListener('click', () => editTrade(t, true));
     return row;
   }
 
-  function openRecord(t, closing = false) {
-    const a = ARBS[t.arbitrage_name] || { id: t.arbitrage_id, name: t.arbitrage_name || t.arbitrage_id, anchor: t.anchor_symbol, assets: [t.current_asset] };
-    populateArbitrageSelect($('tradeVisualArbitrage'), a.id);
-    $('tradeVisualStrategy').innerHTML = strategies(a).map(x => `<option value="${x}">${x}</option>`).join('');
-    $('tradeVisualModal').dataset.tradeId = t.id;
-    $('tradeVisualArbitrage').value = a.id;
-    $('tradeVisualStrategy').value = t.strategy;
-    $('tradeVisualOpenedAt').value = localDate(t.opened_at);
-    $('tradeVisualAnchorAmount').value = t.initial_anchor_amount;
-    $('tradeVisualQuantity').value = t.current_quantity;
-    $('tradeVisualClosedAt').value = closing ? localDate() : (t.closed_at ? localDate(t.closed_at) : '');
-    $('tradeVisualExitAmount').value = t.closed_anchor_amount ?? '';
-    $('tradeVisualMessage').textContent = '';
-    $('tradeVisualResult').classList.remove('hidden');
+  function showForm(t, closeMode = false) {
+    if (!t) { window.openTradeVisualForm(); return; }
+    const modal = $('tradeVisualModal');
+    populateArbitrageSelect($('tradeVisualArbitrage'), t.arbitrage_id);
+    $('tradeVisualStrategy').innerHTML = strategies(ARBS[t.arbitrage_name] || currentArb()).map(x => `<option value="${x}" ${x === t.strategy ? 'selected' : ''}>${x}</option>`).join('');
+    $('tradeVisualOpenedAt').value = localDate(new Date(t.opened_at));
+    $('tradeVisualAnchorAmount').value = t.initial_anchor_amount ?? '';
+    $('tradeVisualQuantity').value = t.current_quantity ?? '';
+    $('tradeVisualClosedAt').value = closeMode ? localDate() : (t.closed_at ? localDate(new Date(t.closed_at)) : '');
+    $('tradeVisualExitAmount').value = closeMode ? '' : (t.closed_anchor_amount ?? '');
+    $('tradeVisualMessage').textContent = closeMode ? 'Informe somente a quantidade recebida na âncora para fechar 100% da posição.' : '';
+    modal.dataset.tradeId = t.id;
     updateForm();
-    $('tradeVisualModal').classList.remove('hidden');
-    $('tradeVisualModal').setAttribute('aria-hidden', 'false');
+    modal.classList.remove('hidden');
+    modal.setAttribute('aria-hidden', 'false');
   }
-  function editTrade(t) { openRecord(t, false); }
-  function closeTrade(t) { openRecord(t, true); $('tradeVisualExitAmount').focus(); $('tradeVisualMessage').textContent = 'Informe somente a quantidade recebida na âncora para fechar 100% da posição.'; }
-  async function deleteTrade(id) { if (!confirm('Excluir este trade?')) return; try { await api(`/rest/v1/trades?id=eq.${encodeURIComponent(id)}`, { method: 'DELETE' }); await renderTrades(); } catch (e) { alert(`Erro ao excluir: ${e.message}`); } }
+
+  function editTrade(t, closeMode = false) {
+    showForm(t, closeMode);
+  }
+
+  async function deleteTrade(t) {
+    if (!session?.access_token) return showAuth();
+    if (!confirm(`Excluir o trade ${t.strategy}?`)) return;
+    try {
+      await api(`/rest/v1/trades?id=eq.${encodeURIComponent(t.id)}`, { method: 'DELETE' });
+      await renderTrades();
+    } catch (e) { alert(`Erro ao excluir: ${e.message}`); }
+  }
 
   function init() {
-    injectSimulationStyles();
     authUi();
-    renderTrades();
-    const arb = $('arbitrageSelect');
-    arb?.addEventListener('change', () => { authUi(); renderTrades(); });
-    const form = $('tradeVisualForm');
-    if (form) form.onsubmit = submitForm;
-    $('tradeVisualArbitrage')?.addEventListener('change', updateForm);
-    $('tradeVisualStrategy')?.addEventListener('change', updateForm);
+    $('tradeNewBtn')?.addEventListener('click', window.openTradeVisualForm);
+    document.addEventListener('input', e => {
+      if (e.target?.closest('#tradeVisualModal')) updateForm();
+    });
+    document.addEventListener('change', e => {
+      if (e.target?.id === 'tradeVisualStrategy' || e.target?.id === 'tradeVisualArbitrage') updateForm();
+    });
+    document.getElementById('tradeVisualForm')?.addEventListener('submit', submitForm);
+    if (session?.access_token) renderTrades();
   }
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init, { once: true });
-  else init();
+  window.addEventListener('DOMContentLoaded', init);
+  if (document.readyState !== 'loading') init();
 })();
