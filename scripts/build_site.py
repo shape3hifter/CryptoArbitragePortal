@@ -58,7 +58,8 @@ TRADES_MARKUP=r'''
  window.validateTradeVisualForm=function(e){e.preventDefault();const a=arb(),s=$('tradeVisualStrategy').value||sts(a)[0],asset=ia(s,a),opened=$('tradeVisualOpenedAt').value,closed=$('tradeVisualClosedAt').value,cap=Number($('tradeVisualAnchorAmount').value),qty=Number($('tradeVisualQuantity').value),out=Number($('tradeVisualExitAmount').value),m=$('tradeVisualMessage'),r=$('tradeVisualResult');if(!(cap>0)||!(qty>0)){m.textContent=`Preencha a quantidade utilizada em ${a.anchor} e a quantidade recebida em ${asset}.`;return false}if(closed||out>0){if(!closed||!(out>0)){m.textContent='Para fechar, informe a data/hora de saída e a quantidade recebida na âncora.';return false}if(new Date(closed)<new Date(opened)){m.textContent='A saída não pode ser anterior à entrada.';return false}const profit=out-cap,ret=profit/cap,h=(new Date(closed)-new Date(opened))/36e5;r.innerHTML=`<strong>Trade fechado validado</strong><br>${fmt(cap)} ${a.anchor} → ${fmt(qty)} ${asset} → ${fmt(out)} ${a.anchor}<br>Resultado: <strong>${fmt(profit)} ${a.anchor}</strong> (${(ret*100).toLocaleString('pt-BR',{maximumFractionDigits:4)}%) · Duração: ${h.toLocaleString('pt-BR',{maximumFractionDigits:2})} h`;}else{r.innerHTML=`<strong>Trade aberto validado</strong><br>${fmt(cap)} ${a.anchor} → ${fmt(qty)} ${asset}<br>Preço efetivo de entrada: <strong>${fmt(cap/qty)} ${a.anchor}/${asset}</strong>`}r.classList.remove('hidden');m.textContent='Validação concluída. Ainda não gravado no PostgreSQL.';return false;};
 })();
 </script>
-<script src="trades-ui.js?v=20260831" defer></script>
+<script src="supabase/config.js"></script>
+<script src="trades-ui.js?v=20260831"></script>
 '''
 def build():
  if not SOURCE_INDEX.exists() or not TRADES_UI_JS.exists() or not SUPABASE_CONFIG.exists(): raise SystemExit('Arquivos necessários não encontrados')
