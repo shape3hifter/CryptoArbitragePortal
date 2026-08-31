@@ -28,6 +28,19 @@ jobs:
       - name: Build deployable site
         run: python scripts/build_site.py
 
+      - name: Install deterministic Trades launcher
+        run: |
+          cp trades-launcher.js dist/trades-launcher.js
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('dist/index.html')
+          html = p.read_text(encoding='utf-8')
+          tag = '<script src="trades-launcher.js?v=20260831-2" defer></script>'
+          if tag not in html:
+              html = html.replace('</body>', f'{tag}\n</body>', 1)
+          p.write_text(html, encoding='utf-8')
+          PY
+
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
 
