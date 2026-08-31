@@ -3,9 +3,6 @@ name: Deploy portal
 on:
   push:
     branches: [main]
-    paths-ignore:
-      - 'data.csv'
-      - 'capture-log.json'
   workflow_dispatch:
 
 permissions:
