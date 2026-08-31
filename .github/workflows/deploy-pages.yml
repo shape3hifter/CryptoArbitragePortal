@@ -28,13 +28,18 @@ jobs:
       - name: Install deterministic portal runtime fixes
         run: |
           cp runtime-fixes.js dist/runtime-fixes.js
+          cp simulation-display-fix.js dist/simulation-display-fix.js
           python - <<'PY'
           from pathlib import Path
           p = Path('dist/index.html')
           html = p.read_text(encoding='utf-8')
-          tag = '<script src="runtime-fixes.js?v=20260831-1" defer></script>'
-          if tag not in html:
-              html = html.replace('</body>', f'{tag}\n</body>', 1)
+          tags = [
+              '<script src="runtime-fixes.js?v=20260831-1" defer></script>',
+              '<script src="simulation-display-fix.js?v=20260831-1" defer></script>'
+          ]
+          for tag in tags:
+              if tag not in html:
+                  html = html.replace('</body>', f'{tag}\n</body>', 1)
           p.write_text(html, encoding='utf-8')
           PY
 
