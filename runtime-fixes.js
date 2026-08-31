@@ -50,48 +50,50 @@
     return SUPA_URL && url.startsWith(SUPA_URL + '/');
   }
 
-  function extractCmCRequest(url) {
+  function extractCmcRequest(url) {
     try {
       const u = new URL(url);
       if (u.hostname !== 'corsproxy.io') return null;
       const embedded = u.searchParams.get('url');
       if (!embedded) return null;
-      const decoded = decodeURIComponent(embedded);
-      const target = new URL(decoded);
+      const target = new URL(decodeURIComponent(embedded));
       if (target.hostname !== 'pro-api.coinmarketcap.com') return null;
-      if (!target.pathname.includes('/public-api/v1/simple/price')) return null;
+      if (!target.pathname.endsWith('/public-api/v1/simple/price')) return null;
       const ids = target.searchParams.get('ids');
       const convert = target.searchParams.get('convert') || 'USD';
       if (!ids) return null;
-      return `${CMC_QUOTES}?ids=${encodeURIComponent(ids)}&convert=${encodeURIComponent(convert)}`;
+      return `${CMC_QUOTES}?id=${encodeURIComponent(ids)}&convert=${encodeURIComponent(convert)}`;
     } catch { return null; }
   }
 
+  function normalizeCmcPayload(payload) {
+    const data = payload?.data;
+    const records = Array.isArray(data) ? data : (data && typeof data === 'object' ? Object.values(data) : []);
+    return records.map(item => {
+      const id = Number(item?.id);
+      const quote = item?.quote?.USD || {};
+      return { id, price: Number(quote?.price) };
+    }).filter(item => Number.isInteger(item.id) && Number.isFinite(item.price) && item.price > 0);
+  }
+
   async function fetchCmcCompat(legacyUrl, init) {
-    const target = extractCmCRequest(legacyUrl);
+    const target = extractCmcRequest(legacyUrl);
     if (!target) return originalFetch(legacyUrl, init);
     const proxied = CORS_PROXY + encodeURIComponent(target);
-    const res = await originalFetch(proxied, init);
+    const res = await originalFetch(proxied, { ...init, headers: { Accept: 'application/json', ...(init?.headers || {}) } });
     if (!res.ok) return res;
     let payload = null;
     try { payload = await res.json(); } catch { return res; }
-    const records = Array.isArray(payload?.data) ? payload.data : [];
-    const normalized = records.map(item => {
-      const id = Number(item?.id);
-      const quote = item?.quote?.USD || item?.quote?.[0] || {};
-      return { id, price: Number(quote?.price) };
-    }).filter(item => Number.isInteger(item.id) && Number.isFinite(item.price) && item.price > 0);
-    const out = new Response(JSON.stringify({ data: normalized, status: payload?.status || { error_code: 0 } }), {
+    const normalized = normalizeCmcPayload(payload);
+    return new Response(JSON.stringify({ data: normalized, status: payload?.status || { error_code: 0 } }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' }
     });
-    return out;
   }
 
   window.fetch = async (input, init = {}) => {
     const url = typeof input === 'string' ? input : input?.url || '';
-    const cmcCompat = extractCmCRequest(url);
-    if (cmcCompat) return fetchCmcCompat(url, init);
+    if (extractCmcRequest(url)) return fetchCmcCompat(url, init);
 
     const isSupabase = supabaseRequest(url);
     const res = await originalFetch(input, init);
@@ -117,9 +119,4 @@
     if (open) open.textContent = 'Sessão expirada. Entre novamente para consultar seus trades.';
     if (closed) closed.textContent = '';
   });
-
-  // The existing portal and trade module already call the CMC v1 simple-price
-  // route through corsproxy.io. The fetch shim above transparently upgrades
-  // those calls to the current keyless v3 quotes endpoint, so both the main
-  // “Cotação agora” button and “Simular fechamento” share the same fix.
 })();
