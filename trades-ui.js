@@ -6,8 +6,11 @@
     'ADA / NIGHT / SNEK': { id: 'arb-ada-night-snek', name: 'ADA / NIGHT / SNEK', anchor: 'ADA', assets: ['NIGHT', 'SNEK'] },
     'SOL / BONK / WIF': { id: 'arb-sol-bonk-wif', name: 'SOL / BONK / WIF', anchor: 'SOL', assets: ['BONK', 'WIF'] }
   };
+  const LIVE_CMC_BASE = 'https://pro-api.coinmarketcap.com/public-api/v1/simple/price';
+  const CMC_IDS = { ADA: 2010, NIGHT: 39064, SNEK: 25264, SOL: 5426, BONK: 23095, WIF: 28752 };
   const SESSION_KEY = 'cryptoArbSupabaseSession';
   let session = loadSession();
+  let simulationState = null;
   const $ = id => document.getElementById(id);
 
   function loadSession() {
@@ -54,6 +57,30 @@
     try { body = text ? JSON.parse(text) : null; } catch {}
     if (!res.ok) throw new Error(body?.msg || body?.message || body?.hint || body?.details || `HTTP ${res.status}`);
     return body;
+  }
+
+  function injectSimulationStyles() {
+    if ($('tradeSimulationStyles')) return;
+    const style = document.createElement('style');
+    style.id = 'tradeSimulationStyles';
+    style.textContent = `
+      .trade-sim-btn{background:#18243e;color:var(--text);border:1px solid var(--border);padding:7px 9px;border-radius:10px;cursor:pointer;font-size:11px}
+      .trade-sim-btn.primary{background:var(--accent);color:#09101f;border-color:var(--accent)}
+      .trade-sim-modal{position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px}
+      .trade-sim-modal.hidden{display:none}
+      .trade-sim-backdrop{position:absolute;inset:0;background:rgba(3,7,18,.72)}
+      .trade-sim-dialog{position:relative;width:min(720px,100%);max-height:90vh;overflow:auto;background:var(--panel);border:1px solid var(--border);border-radius:18px;padding:18px;box-shadow:0 20px 70px rgba(0,0,0,.45)}
+      .trade-sim-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:12px}
+      .trade-sim-card{background:var(--panel2);border:1px solid var(--border);border-radius:12px;padding:12px}
+      .trade-sim-card .k{font-size:11px;color:var(--muted)}
+      .trade-sim-card .v{font-size:18px;font-weight:700;margin-top:4px}
+      .trade-sim-result{margin-top:14px;border:1px solid var(--border);border-radius:14px;padding:14px;background:rgba(122,162,255,.06)}
+      .trade-sim-profit{font-size:28px;font-weight:800;margin-top:4px}
+      .trade-sim-meta{font-size:12px;color:var(--muted);margin-top:6px;line-height:1.45}
+      .trade-sim-actions{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap;margin-top:14px}
+      @media(max-width:600px){.trade-sim-grid{grid-template-columns:1fr}}
+    `;
+    document.head.appendChild(style);
   }
 
   function authUi() {
@@ -185,6 +212,103 @@
   }
   window.validateTradeVisualForm = submitForm;
 
+  function openSimulationModal() {
+    injectSimulationStyles();
+    if (!$('tradeSimulationModal')) {
+      const modal = document.createElement('div');
+      modal.id = 'tradeSimulationModal';
+      modal.className = 'trade-sim-modal hidden';
+      modal.innerHTML = `<div class="trade-sim-backdrop"></div><div class="trade-sim-dialog" role="dialog" aria-modal="true" aria-labelledby="tradeSimTitle"><div class="section-head"><div><h2 id="tradeSimTitle">Simular fechamento</h2><div id="tradeSimSubtitle" class="note"></div></div><button id="tradeSimClose" class="btn" type="button">Fechar</button></div><div id="tradeSimBody"></div><div class="trade-sim-actions"><button id="tradeSimRefresh" class="trade-sim-btn primary" type="button">⚡ Cotação agora</button><button id="tradeSimClose2" class="btn" type="button">Fechar</button></div></div>`;
+      document.body.appendChild(modal);
+      $('tradeSimClose').onclick = closeSimulationModal;
+      $('tradeSimClose2').onclick = closeSimulationModal;
+      modal.querySelector('.trade-sim-backdrop').onclick = closeSimulationModal;
+      $('tradeSimRefresh').onclick = () => refreshSimulationQuote();
+    }
+    $('tradeSimulationModal').classList.remove('hidden');
+    $('tradeSimulationModal').setAttribute('aria-hidden', 'false');
+  }
+  function closeSimulationModal() {
+    const modal = $('tradeSimulationModal');
+    if (!modal) return;
+    modal.classList.add('hidden');
+    modal.setAttribute('aria-hidden', 'true');
+    simulationState = null;
+  }
+  function assetId(symbol) {
+    const s = String(symbol || '').toUpperCase();
+    const id = CMC_IDS[s];
+    return Number.isInteger(id) ? id : null;
+  }
+  async function fetchLivePrices(symbols) {
+    const normalized = [...new Set(symbols.map(s => String(s || '').toUpperCase()))];
+    const ids = normalized.map(assetId);
+    if (ids.some(id => id == null)) throw new Error(`Não há CoinMarketCap ID configurado para ${normalized.find((s,i)=>ids[i]==null) || 'um dos ativos'}.`);
+    const url = `${LIVE_CMC_BASE}?ids=${ids.join(',')}&convert=USD`;
+    const res = await fetch('https://corsproxy.io/?url=' + encodeURIComponent(url), { cache: 'no-store' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const payload = await res.json();
+    const list = Array.isArray(payload?.data) ? payload.data : [];
+    const out = {};
+    normalized.forEach((symbol, i) => {
+      const item = list.find(x => Number(x?.id) === ids[i]);
+      const price = Number(item?.price);
+      if (Number.isFinite(price) && price > 0) out[symbol] = price;
+    });
+    if (normalized.some(s => !Number.isFinite(out[s]))) throw new Error('A cotação atual não está disponível para todos os ativos do trade.');
+    return out;
+  }
+  function renderSimulationLoading(t) {
+    const anchor = String(t.anchor_symbol || '').toUpperCase();
+    const asset = String(t.current_asset || '').toUpperCase();
+    $('tradeSimSubtitle').textContent = `${t.strategy} · posição aberta`;
+    $('tradeSimBody').innerHTML = `<div class="trade-sim-meta">Consultando a cotação atual de ${asset} e ${anchor}…</div>`;
+  }
+  function renderSimulationError(message) {
+    $('tradeSimBody').innerHTML = `<div class="trade-sim-result"><strong>Não foi possível simular agora.</strong><div class="trade-sim-meta">${message}</div></div>`;
+  }
+  function renderSimulation(t, prices) {
+    const anchor = String(t.anchor_symbol || '').toUpperCase();
+    const asset = String(t.current_asset || '').toUpperCase();
+    const initial = Number(t.initial_anchor_amount);
+    const qty = Number(t.current_quantity);
+    const assetPrice = Number(prices[asset]);
+    const anchorPrice = Number(prices[anchor]);
+    const simulatedClose = qty * assetPrice / anchorPrice;
+    const profit = simulatedClose - initial;
+    const pct = initial > 0 ? (profit / initial) * 100 : NaN;
+    const entry = Number(t.entry_ratio_anchor_per_asset);
+    const currentRatio = assetPrice > 0 && anchorPrice > 0 ? anchorPrice / assetPrice : NaN;
+    const captured = new Date().toLocaleString('pt-BR');
+    const resultClass = profit >= 0 ? 'good' : 'bad';
+    $('tradeSimSubtitle').textContent = `${t.strategy} · cotação capturada em ${captured}`;
+    $('tradeSimBody').innerHTML = `<div class="trade-sim-grid"><div class="trade-sim-card"><div class="k">Posição atual</div><div class="v">${fmt(qty)} ${asset}</div></div><div class="trade-sim-card"><div class="k">Capital inicial</div><div class="v">${fmt(initial)} ${anchor}</div></div><div class="trade-sim-card"><div class="k">${asset} agora</div><div class="v">${fmt(assetPrice, 10)} USD</div></div><div class="trade-sim-card"><div class="k">${anchor} agora</div><div class="v">${fmt(anchorPrice, 10)} USD</div></div><div class="trade-sim-card"><div class="k">Entrada registrada</div><div class="v">${fmt(entry, 10)} ${anchor}/${asset}</div></div><div class="trade-sim-card"><div class="k">Relação atual</div><div class="v">${fmt(currentRatio, 10)} ${anchor}/${asset}</div></div></div><div class="trade-sim-result"><div class="k">Fechamento simulado</div><div class="trade-sim-profit ${resultClass}">${fmt(simulatedClose)} ${anchor}</div><div class="trade-sim-meta">Resultado potencial: <strong>${fmt(profit)} ${anchor}</strong> · <strong>${Number.isFinite(pct) ? pct.toLocaleString('pt-BR',{maximumFractionDigits:4}) : '—'}%</strong></div><div class="trade-sim-meta">Cálculo: ${fmt(qty)} ${asset} × ${fmt(assetPrice, 10)} USD ÷ ${fmt(anchorPrice, 10)} USD = ${fmt(simulatedClose)} ${anchor}.</div><div class="trade-sim-meta">Simulação não grava o trade e não considera taxas, slippage, spread ou impacto de mercado.</div></div>`;
+  }
+  async function refreshSimulationQuote() {
+    const t = simulationState?.trade;
+    if (!t) return;
+    $('tradeSimRefresh').disabled = true;
+    $('tradeSimRefresh').textContent = 'Consultando…';
+    renderSimulationLoading(t);
+    try {
+      const prices = await fetchLivePrices([t.current_asset, t.anchor_symbol]);
+      simulationState = { trade: t, prices, capturedAt: new Date().toISOString() };
+      renderSimulation(t, prices);
+    } catch (e) {
+      renderSimulationError(e.message || 'Erro desconhecido.');
+    } finally {
+      $('tradeSimRefresh').disabled = false;
+      $('tradeSimRefresh').textContent = '⚡ Cotação agora';
+    }
+  }
+  async function simulateCloseTrade(t) {
+    if (t.closed_at) return;
+    simulationState = { trade: t, prices: null };
+    openSimulationModal();
+    renderSimulationLoading(t);
+    await refreshSimulationQuote();
+  }
+
   async function renderTrades() {
     const open = $('tradesOpenEmpty'), closed = $('tradesClosedEmpty');
     if (!open || !closed) return;
@@ -206,9 +330,10 @@
     const row = document.createElement('div');
     row.className = 'trade-row';
     row.style.cssText = 'padding:10px 0;border-bottom:1px solid var(--border);font-size:12px';
-    row.innerHTML = `<div style="display:flex;justify-content:space-between;gap:10px"><div><strong>${t.strategy}</strong><br><span class="note">${fmt(t.initial_anchor_amount)} ${t.anchor_symbol} → ${fmt(t.current_quantity)} ${t.current_asset}${isClosed ? ` → ${fmt(t.closed_anchor_amount)} ${t.anchor_symbol}` : ''}</span></div><div style="text-align:right"><strong>${isClosed ? `${fmt(profit)} ${t.anchor_symbol}` : 'ABERTO'}</strong><br><span class="note">${isClosed ? `${pct.toLocaleString('pt-BR',{maximumFractionDigits:2})}%` : new Date(t.opened_at).toLocaleString('pt-BR')}</span></div></div><div class="actions" style="justify-content:flex-end;margin-top:6px"><button class="btn" data-edit>Editar</button><button class="btn danger" data-delete>Excluir</button>${isClosed ? '' : '<button class="btn primary" data-close>Fechar</button>'}</div>`;
+    row.innerHTML = `<div style="display:flex;justify-content:space-between;gap:10px"><div><strong>${t.strategy}</strong><br><span class="note">${fmt(t.initial_anchor_amount)} ${t.anchor_symbol} → ${fmt(t.current_quantity)} ${t.current_asset}${isClosed ? ` → ${fmt(t.closed_anchor_amount)} ${t.anchor_symbol}` : ''}</span></div><div style="text-align:right"><strong>${isClosed ? `${fmt(profit)} ${t.anchor_symbol}` : 'ABERTO'}</strong><br><span class="note">${isClosed ? `${pct.toLocaleString('pt-BR',{maximumFractionDigits:2})}%` : new Date(t.opened_at).toLocaleString('pt-BR')}</span></div></div><div class="actions" style="justify-content:flex-end;margin-top:6px"><button class="btn" data-edit>Editar</button><button class="btn danger" data-delete>Excluir</button>${isClosed ? '' : '<button class="trade-sim-btn" data-simulate>Simular fechamento</button><button class="btn primary" data-close>Fechar</button>'}</div>`;
     row.querySelector('[data-edit]').onclick = () => editTrade(t);
     row.querySelector('[data-delete]').onclick = () => deleteTrade(t.id);
+    row.querySelector('[data-simulate]')?.addEventListener('click', () => simulateCloseTrade(t));
     row.querySelector('[data-close]')?.addEventListener('click', () => closeTrade(t));
     return row;
   }
@@ -236,6 +361,7 @@
   async function deleteTrade(id) { if (!confirm('Excluir este trade?')) return; try { await api(`/rest/v1/trades?id=eq.${encodeURIComponent(id)}`, { method: 'DELETE' }); await renderTrades(); } catch (e) { alert(`Erro ao excluir: ${e.message}`); } }
 
   function init() {
+    injectSimulationStyles();
     authUi();
     renderTrades();
     const arb = $('arbitrageSelect');
