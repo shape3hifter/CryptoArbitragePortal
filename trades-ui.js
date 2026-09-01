@@ -6,8 +6,6 @@
     'ADA / NIGHT / SNEK': { id: 'arb-ada-night-snek', name: 'ADA / NIGHT / SNEK', anchor: 'ADA', assets: ['NIGHT', 'SNEK'] },
     'SOL / BONK / WIF': { id: 'arb-sol-bonk-wif', name: 'SOL / BONK / WIF', anchor: 'SOL', assets: ['BONK', 'WIF'] }
   };
-  // Live quotes are fetched from CoinGecko's keyless public API.
-  // Daily historical snapshots continue to use CoinMarketCap in the capture pipeline.
   const LIVE_CG_BASE = 'https://api.coingecko.com/api/v3/simple/price';
   const CG_IDS = { ADA: 'cardano', NIGHT: 'midnight-3', SNEK: 'snek', SOL: 'solana', BONK: 'bonk', WIF: 'dogwifcoin' };
   const SESSION_KEY = 'cryptoArbSupabaseSession';
@@ -207,37 +205,29 @@
       }
       msg.textContent = id ? 'Trade atualizado no PostgreSQL.' : 'Trade gravado no PostgreSQL.';
       const profit = closed ? out - cap : 0;
-      result.innerHTML = closed ? `<strong>Trade fechado salvo</strong><br>${fmt(cap)} ${a.anchor} → ${fmt(qty)} ${asset} → ${fmt(out)} ${a.anchor}<br>Resultado: <strong>${fmt(profit)} ${a.anchor}</strong> (${(100 * profit / cap).toLocaleString('pt-BR', { maximumFractionDigits: 4 })}%)` : `<strong>Trade aberto salvo</strong><br>${fmt(cap)} ${a.anchor} → ${fmt(qty)} ${asset}<br>Preço efetivo: <strong>${fmt(cap / qty)} ${a.anchor}/${asset}</strong>`;
+      result.innerHTML = closed ? `<strong>Trade fechado salvo</strong><br>${fmt(cap)} ${a.anchor} → ${fmt(qty)} ${asset} → ${fmt(out)} ${a.anchor}<br>Resultado: ${fmt(profit)} ${a.anchor} (${fmt(cap > 0 ? (profit / cap) * 100 : NaN, 4)}%)` : `<strong>Trade aberto salvo</strong><br>${fmt(cap)} ${a.anchor} → ${fmt(qty)} ${asset}<br>Preço efetivo: ${fmt(cap / qty)} ${a.anchor}/${asset}`;
       result.classList.remove('hidden');
       await renderTrades();
-    } catch (err) { msg.textContent = `Erro ao gravar: ${err.message}`; }
+    } catch (e) {
+      msg.textContent = `Erro ao salvar: ${e.message}`;
+    }
     return false;
   }
-  window.validateTradeVisualForm = submitForm;
 
-  function openSimulationModal() {
-    injectSimulationStyles();
-    if (!$('tradeSimulationModal')) {
-      const modal = document.createElement('div');
-      modal.id = 'tradeSimulationModal';
-      modal.className = 'trade-sim-modal hidden';
-      modal.innerHTML = `<div class="trade-sim-backdrop"></div><div class="trade-sim-dialog" role="dialog" aria-modal="true" aria-labelledby="tradeSimTitle"><div class="section-head"><div><h2 id="tradeSimTitle">Simular fechamento</h2><div id="tradeSimSubtitle" class="note"></div></div><button id="tradeSimClose" class="btn" type="button">Fechar</button></div><div id="tradeSimBody"></div><div class="trade-sim-actions"><button id="tradeSimRefresh" class="trade-sim-btn primary" type="button">⚡ Cotação agora</button><button id="tradeSimClose2" class="btn" type="button">Fechar</button></div></div>`;
-      document.body.appendChild(modal);
-      $('tradeSimClose').onclick = closeSimulationModal;
-      $('tradeSimClose2').onclick = closeSimulationModal;
-      modal.querySelector('.trade-sim-backdrop').onclick = closeSimulationModal;
-      $('tradeSimRefresh').onclick = () => refreshSimulationQuote();
-    }
-    $('tradeSimulationModal').classList.remove('hidden');
-    $('tradeSimulationModal').setAttribute('aria-hidden', 'false');
+  function ensureSimulationModal() {
+    if ($('tradeSimModal')) return;
+    const modal = document.createElement('div');
+    modal.id = 'tradeSimModal';
+    modal.className = 'trade-sim-modal hidden';
+    modal.innerHTML = '<div class="trade-sim-backdrop"></div><div class="trade-sim-dialog"><div class="section-head"><div><h2>Simular fechamento</h2><div id="tradeSimSubtitle" class="note"></div></div><button id="tradeSimCloseTop" class="btn" type="button">Fechar</button></div><div id="tradeSimBody"></div><div class="trade-sim-actions"><button id="tradeSimRefresh" class="btn primary" type="button">⚡ Cotação agora</button><button id="tradeSimClose" class="btn" type="button">Fechar</button></div></div>';
+    document.body.appendChild(modal);
+    modal.querySelector('.trade-sim-backdrop').onclick = closeSimulationModal;
+    $('tradeSimCloseTop').onclick = closeSimulationModal;
+    $('tradeSimClose').onclick = closeSimulationModal;
+    $('tradeSimRefresh').onclick = refreshSimulationQuote;
   }
-  function closeSimulationModal() {
-    const modal = $('tradeSimulationModal');
-    if (!modal) return;
-    modal.classList.add('hidden');
-    modal.setAttribute('aria-hidden', 'true');
-    simulationState = null;
-  }
+  function openSimulationModal() { ensureSimulationModal(); $('tradeSimModal').classList.remove('hidden'); }
+  function closeSimulationModal() { $('tradeSimModal')?.classList.add('hidden'); }
   function assetId(symbol) {
     const s = String(symbol || '').toUpperCase();
     const id = CG_IDS[s];
@@ -287,7 +277,7 @@
     const profit = simulatedClose - initial;
     const pct = initial > 0 ? (profit / initial) * 100 : NaN;
     const entry = Number(t.entry_ratio_anchor_per_asset);
-    const currentRatio = assetPrice > 0 && anchorPrice > 0 ? anchorPrice / assetPrice : NaN;
+    const currentRatio = assetPrice > 0 && anchorPrice > 0 ? assetPrice / anchorPrice : NaN;
     const captured = new Date().toLocaleString('pt-BR');
     const resultClass = profit >= 0 ? 'good' : 'bad';
     $('tradeSimSubtitle').textContent = `${t.strategy} · cotação capturada em ${captured}`;
@@ -337,6 +327,7 @@
       closed.textContent = '';
     }
   }
+  window.refreshTrades = renderTrades;
 
   function tradeRow(t, closed) {
     const a = ARBS[t.arbitrage_name] || currentArb();
