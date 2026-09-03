@@ -8,7 +8,7 @@
   }
 
   function fixCurrentRatio(root = document) {
-    const modal = root.querySelector?.('#tradeSimulationModal');
+    const modal = root.querySelector?.('#tradeSimModal');
     if (!modal || modal.classList.contains('hidden')) return;
 
     const cards = [...modal.querySelectorAll('.trade-sim-card')];
