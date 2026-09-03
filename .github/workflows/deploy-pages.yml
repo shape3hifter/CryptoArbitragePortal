@@ -37,24 +37,24 @@ jobs:
           p = Path('dist/index.html')
           html = p.read_text(encoding='utf-8')
           replacements = {
-              'trades-ui.js?v=20260901': 'trades-ui.js?v=20260903-5',
-              'runtime-fixes.js?v=20260903-1': 'runtime-fixes.js?v=20260903-5',
-              'runtime-fixes.js?v=20260903-2': 'runtime-fixes.js?v=20260903-5',
-              'simulation-display-fix.js?v=20260901-2': 'simulation-display-fix.js?v=20260903-5',
-              'simulation-display-fix.js?v=20260903-3': 'simulation-display-fix.js?v=20260903-5',
-              'simulation-display-fix.js?v=20260903-4': 'simulation-display-fix.js?v=20260903-5',
-              'trades-launcher.js?v=20260901-3': 'trades-launcher.js?v=20260903-2',
-              'trades-arbitrage-refresh.js?v=20260901-1': 'trades-arbitrage-refresh.js?v=20260903-2',
-              'trades-runtime-guard.js?v=20260901-1': 'trades-runtime-guard.js?v=20260903-2'
+              'trades-ui.js?v=20260901': 'trades-ui.js?v=20260903-6',
+              'runtime-fixes.js?v=20260901': 'runtime-fixes.js?v=20260903-6',
+              'runtime-fixes.js?v=20260903-1': 'runtime-fixes.js?v=20260903-6',
+              'runtime-fixes.js?v=20260903-2': 'runtime-fixes.js?v=20260903-6',
+              'runtime-fixes.js?v=20260903-5': 'runtime-fixes.js?v=20260903-6',
+              'simulation-display-fix.js?v=20260901-2': 'simulation-display-fix.js?v=20260903-6',
+              'simulation-display-fix.js?v=20260903-3': 'simulation-display-fix.js?v=20260903-6',
+              'simulation-display-fix.js?v=20260903-4': 'simulation-display-fix.js?v=20260903-6',
+              'simulation-display-fix.js?v=20260903-5': 'simulation-display-fix.js?v=20260903-6',
+              'trades-launcher.js?v=20260901-3': 'trades-launcher.js?v=20260903-3',
+              'trades-arbitrage-refresh.js?v=20260901-1': 'trades-arbitrage-refresh.js?v=20260903-3',
+              'trades-runtime-guard.js?v=20260901-1': 'trades-runtime-guard.js?v=20260903-3'
           }
           for old, new in replacements.items():
               html = html.replace(old, new)
-          tags = [
-              '<script src="simulation-display-fix.js?v=20260903-5" defer></script>'
-          ]
-          for tag in tags:
-              if tag not in html:
-                  html = html.replace('</body>', f'{tag}\n</body>', 1)
+          tag = '<script src="simulation-display-fix.js?v=20260903-6" defer></script>'
+          if tag not in html:
+              html = html.replace('</body>', f'{tag}\n</body>', 1)
           p.write_text(html, encoding='utf-8')
           PY
 
@@ -67,8 +67,8 @@ jobs:
           p = Path('dist/index.html')
           html = p.read_text(encoding='utf-8')
           tags = [
-              '<script src="trades-launcher.js?v=20260903-2" defer></script>',
-              '<script src="trades-arbitrage-refresh.js?v=20260903-2" defer></script>'
+              '<script src="trades-launcher.js?v=20260903-3" defer></script>',
+              '<script src="trades-arbitrage-refresh.js?v=20260903-3" defer></script>'
           ]
           for tag in tags:
               if tag not in html:
@@ -83,7 +83,7 @@ jobs:
           from pathlib import Path
           p = Path('dist/index.html')
           html = p.read_text(encoding='utf-8')
-          tag = '<script src="trades-runtime-guard.js?v=20260903-2" defer></script>'
+          tag = '<script src="trades-runtime-guard.js?v=20260903-3" defer></script>'
           if tag not in html:
               html = html.replace('</body>', f'{tag}\n</body>', 1)
           p.write_text(html, encoding='utf-8')
