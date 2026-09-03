@@ -62,6 +62,26 @@
     return SUPA_URL && url.startsWith(SUPA_URL + '/');
   }
 
+  function isDirectCoinGeckoRequest(url) {
+    try {
+      const u = new URL(url);
+      return u.origin === 'https://api.coingecko.com' && u.pathname === '/api/v3/simple/price';
+    } catch { return false; }
+  }
+
+  async function fetchCoinGeckoWithFallback(input, init = {}) {
+    try {
+      const res = await originalFetch(input, init);
+      if (res.ok || !isDirectCoinGeckoRequest(typeof input === 'string' ? input : input?.url || '')) return res;
+      if (![429, 403, 408, 500, 502, 503, 504].includes(res.status)) return res;
+    } catch {}
+
+    const url = typeof input === 'string' ? input : input?.url || '';
+    if (!url) return originalFetch(input, init);
+    const proxied = `${CORS_PROXY}${encodeURIComponent(url)}`;
+    return originalFetch(proxied, { ...init, cache: 'no-store' });
+  }
+
   function extractLegacyLiveRequest(url) {
     try {
       const u = new URL(url);
@@ -86,7 +106,7 @@
     if (!request) return originalFetch(legacyUrl, { cache: 'no-store' });
 
     const target = `${LIVE_CG_BASE}?ids=${encodeURIComponent(request.cgIds.join(','))}&vs_currencies=usd`;
-    const res = await originalFetch(target, { cache: 'no-store', headers: { Accept: 'application/json' } });
+    const res = await fetchCoinGeckoWithFallback(target, { cache: 'no-store', headers: { Accept: 'application/json' } });
     if (!res.ok) return res;
 
     const payload = await res.json();
@@ -107,6 +127,8 @@
 
     const liveRequest = extractLegacyLiveRequest(url);
     if (liveRequest) return fetchLegacyLiveCompat(url);
+
+    if (isDirectCoinGeckoRequest(url)) return fetchCoinGeckoWithFallback(input, init);
 
     const isSupabase = supabaseRequest(url);
     const res = await originalFetch(input, init);
