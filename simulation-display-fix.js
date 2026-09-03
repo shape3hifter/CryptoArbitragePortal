@@ -25,6 +25,9 @@
       #tradeSimModal .trade-sim-result{margin-top:14px!important;border:1px solid var(--border,#2b3a5c)!important;border-radius:14px!important;padding:14px!important;background:rgba(122,162,255,.06)!important}
       #tradeSimModal .trade-sim-profit{font-size:28px!important;font-weight:800!important;margin-top:4px!important}
       #tradeSimModal .trade-sim-meta{font-size:12px!important;color:var(--muted,#9aa8c2)!important;margin-top:6px!important;line-height:1.45!important}
+      #tradeSimModal .trade-sim-profit + .trade-sim-meta{font-size:16px!important;font-weight:700!important;margin-top:9px!important}
+      #tradeSimModal .trade-sim-result:has(.trade-sim-profit.good) .trade-sim-profit + .trade-sim-meta{color:var(--good,#68d391)!important}
+      #tradeSimModal .trade-sim-result:has(.trade-sim-profit.bad) .trade-sim-profit + .trade-sim-meta{color:var(--bad,#ff7d7d)!important}
       #tradeSimModal .trade-sim-actions{display:flex!important;justify-content:flex-end!important;gap:8px!important;flex-wrap:wrap!important;margin-top:14px!important}
       @media(max-width:600px){#tradeSimModal .trade-sim-grid{grid-template-columns:1fr!important}}
     `;
