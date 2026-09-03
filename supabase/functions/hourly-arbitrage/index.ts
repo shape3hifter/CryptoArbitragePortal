@@ -26,6 +26,11 @@ const roundHourIso=(now=new Date())=>{const d=new Date(now);d.setUTCMinutes(0,0,
 const eventRecord=(base:Record<string,unknown>,type:string,threshold:number|null=null)=>({...base,type,threshold});
 
 async function authenticate(req:Request){
+  const cronSecret=req.headers.get("x-cron-secret")?.trim()??"";
+  if(cronSecret){
+    const {data,error}=await db.from("hourly_arbitrage_scheduler_config").select("cron_secret").eq("id",1).maybeSingle();
+    if(!error&&data?.cron_secret&&cronSecret===data.cron_secret)return {mode:"service" as const,userId:null as string|null};
+  }
   const key=req.headers.get("apikey")?.trim()??"";
   if(key&&key===legacyServiceRole)return {mode:"service" as const,userId:null as string|null};
   try{const keys=JSON.parse(Deno.env.get("SUPABASE_SECRET_KEYS")??"{}");if(key&&Object.values(keys).some(v=>v===key))return {mode:"service" as const,userId:null as string|null};}catch{}
