@@ -1,0 +1,2 @@
+[functions.hourly-arbitrage]
+verify_jwt = false
