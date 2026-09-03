@@ -42,17 +42,18 @@ jobs:
               'runtime-fixes.js?v=20260903-1': 'runtime-fixes.js?v=20260903-6',
               'runtime-fixes.js?v=20260903-2': 'runtime-fixes.js?v=20260903-6',
               'runtime-fixes.js?v=20260903-5': 'runtime-fixes.js?v=20260903-6',
-              'simulation-display-fix.js?v=20260901-2': 'simulation-display-fix.js?v=20260903-6',
-              'simulation-display-fix.js?v=20260903-3': 'simulation-display-fix.js?v=20260903-6',
-              'simulation-display-fix.js?v=20260903-4': 'simulation-display-fix.js?v=20260903-6',
-              'simulation-display-fix.js?v=20260903-5': 'simulation-display-fix.js?v=20260903-6',
+              'simulation-display-fix.js?v=20260901-2': 'simulation-display-fix.js?v=20260903-7',
+              'simulation-display-fix.js?v=20260903-3': 'simulation-display-fix.js?v=20260903-7',
+              'simulation-display-fix.js?v=20260903-4': 'simulation-display-fix.js?v=20260903-7',
+              'simulation-display-fix.js?v=20260903-5': 'simulation-display-fix.js?v=20260903-7',
+              'simulation-display-fix.js?v=20260903-6': 'simulation-display-fix.js?v=20260903-7',
               'trades-launcher.js?v=20260901-3': 'trades-launcher.js?v=20260903-3',
               'trades-arbitrage-refresh.js?v=20260901-1': 'trades-arbitrage-refresh.js?v=20260903-3',
               'trades-runtime-guard.js?v=20260901-1': 'trades-runtime-guard.js?v=20260903-3'
           }
           for old, new in replacements.items():
               html = html.replace(old, new)
-          tag = '<script src="simulation-display-fix.js?v=20260903-6" defer></script>'
+          tag = '<script src="simulation-display-fix.js?v=20260903-7" defer></script>'
           if tag not in html:
               html = html.replace('</body>', f'{tag}\n</body>', 1)
           p.write_text(html, encoding='utf-8')
