@@ -1,13 +1,18 @@
+/*
+ * Simulation display compatibility layer.
+ *
+ * IMPORTANT: this file must never install a broad MutationObserver. The
+ * simulation UI itself changes DOM text while rendering quotes; observing
+ * characterData/childList here can create a self-triggering loop and peg the
+ * browser CPU. trades-ui.js is the owner of simulation state and labels.
+ */
 (() => {
   'use strict';
 
   function injectStyles() {
-    let style = document.getElementById('tradeSimulationStyles');
-    if (!style) {
-      style = document.createElement('style');
-      style.id = 'tradeSimulationStyles';
-      document.head.appendChild(style);
-    }
+    if (document.getElementById('tradeSimulationStyles')) return;
+    const style = document.createElement('style');
+    style.id = 'tradeSimulationStyles';
     style.textContent = `
       #tradeSimModal.trade-sim-modal{position:fixed!important;inset:0!important;z-index:99999!important;display:flex!important;align-items:center!important;justify-content:center!important;padding:20px!important;box-sizing:border-box!important}
       #tradeSimModal.trade-sim-modal.hidden{display:none!important}
@@ -23,79 +28,12 @@
       #tradeSimModal .trade-sim-actions{display:flex!important;justify-content:flex-end!important;gap:8px!important;flex-wrap:wrap!important;margin-top:14px!important}
       @media(max-width:600px){#tradeSimModal .trade-sim-grid{grid-template-columns:1fr!important}}
     `;
+    document.head.appendChild(style);
   }
 
-  function parsePtBrNumber(text) {
-    const raw = String(text || '').replace(/[^0-9,.-]/g, '');
-    if (!raw) return NaN;
-    return Number(raw.replace(/\./g, '').replace(',', '.'));
-  }
-
-  function fixTradeLabels(root = document) {
-    root.querySelectorAll?.('.trade-row [data-action="close"]').forEach(btn => {
-      btn.textContent = 'Fechar trade';
-    });
-
-    const modal = root.querySelector?.('#tradeVisualModal');
-    if (!modal || modal.classList.contains('hidden')) return;
-    const title = modal.querySelector('h2');
-    if (!title) return;
-    const tradeId = String(modal.dataset.tradeId || '');
-    const message = modal.querySelector('#tradeVisualMessage')?.textContent || '';
-    if (!tradeId) title.textContent = 'Novo trade';
-    else if (message.includes('fechar 100% da posição')) title.textContent = 'Fechar trade';
-    else title.textContent = 'Editar';
-  }
-
-  function fixCurrentRatio(root = document) {
-    const modal = root.querySelector?.('#tradeSimModal');
-    if (!modal || modal.classList.contains('hidden')) return;
-
-    const cards = [...modal.querySelectorAll('.trade-sim-card')];
-    const values = {};
-    let relationCard = null;
-
-    for (const card of cards) {
-      const k = card.querySelector('.k')?.textContent?.trim() || '';
-      const v = card.querySelector('.v');
-      if (!v) continue;
-      if (k.endsWith('agora')) {
-        const symbol = k.replace(/\s+agora$/, '').trim().toUpperCase();
-        values[symbol] = parsePtBrNumber(v.textContent);
-      }
-      if (k === 'Relação atual') relationCard = card;
-    }
-
-    if (!relationCard) return;
-    const subtitle = modal.querySelector('#tradeSimSubtitle')?.textContent || '';
-    const m = subtitle.match(/^([^·]+)·/);
-    if (!m) return;
-    const parts = m[1].trim().split('→').map(x => x.trim()).filter(Boolean);
-    if (parts.length < 3) return;
-    const anchor = parts[0].toUpperCase();
-    const asset = parts[1].toUpperCase();
-    const assetPrice = values[asset];
-    const anchorPrice = values[anchor];
-    if (!(assetPrice > 0) || !(anchorPrice > 0)) return;
-
-    const currentRatio = assetPrice / anchorPrice;
-    const formatted = `${currentRatio.toLocaleString('pt-BR', { maximumFractionDigits: 10 })} ${anchor}/${asset}`;
-    const value = relationCard.querySelector('.v');
-    if (value && value.textContent !== formatted) value.textContent = formatted;
-  }
-
-  function fixAll() {
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', injectStyles, { once: true });
+  } else {
     injectStyles();
-    fixTradeLabels();
-    fixCurrentRatio();
   }
-
-  const observer = new MutationObserver(() => fixAll());
-  const start = () => {
-    fixAll();
-    observer.observe(document.body, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['class','data-trade-id'] });
-  };
-
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true });
-  else start();
 })();
