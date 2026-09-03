@@ -5,8 +5,8 @@ const URL = Deno.env.get("SUPABASE_URL")!;
 const db = createClient(URL, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession:false, autoRefreshToken:false } });
 const HISTORY = Deno.env.get("ARBITRAGE_HISTORY_URL") ?? "https://raw.githubusercontent.com/shape3hifter/CryptoArbitragePortal/main/data.csv";
 const Z=1.5, LOOKBACK=60, BUY=[.05,.10,.15], PROFIT=[.05,.10,.15];
-const IDS:any={ADA:"cardano",NIGHT:"midnight-3",SNEK:"snek",SOL:"solana",BONK:"bonk",WIF:"dogwifcoin"};
-const ARBS:any={
+const IDS:Record<string,string>={ADA:"cardano",NIGHT:"midnight-3",SNEK:"snek",SOL:"solana",BONK:"bonk",WIF:"dogwifcoin"};
+const ARBS:Record<string,any>={
   "arb-ada-night-snek":{name:"ADA / NIGHT / SNEK",anchor:"ADA",comparatives:["NIGHT","SNEK"],strategies:{NIGHT:"NIGHT → SNEK → ADA",SNEK:"SNEK → NIGHT → ADA"}},
   "arb-sol-bonk-wif":{name:"SOL / BONK / WIF",anchor:"SOL",comparatives:["BONK","WIF"],strategies:{BONK:"SOL → BONK → SOL",WIF:"SOL → WIF → SOL"}}
 };
@@ -59,7 +59,7 @@ Deno.serve(async req=>{try{
   const targetTrades=a.service&&!requested?allTrades.filter((t:any)=>users.includes(t.user_id)):ts;
   const userIds=[...new Set(users)];
   const [st,trs]=await Promise.all([db.from("hourly_arbitrage_state").select("*").in("user_id",userIds),db.from("hourly_trade_state").select("*").in("user_id",userIds)]);if(st.error)throw st.error;if(trs.error)throw trs.error;
-  const pts=[...hs.filter((p:any)=>p.date!==at),{date:at,prices}],sm=new Map((st.data||[]).map((r:any)=>[`${r.user_id}|${r.arbitrage_id}|${r.comparative_symbol}`,r])),tm=new Map((trs.data||[]).map((r:any)=>[`${r.user_id}|${r.trade_id}`,r]));
+  const pts=[...hs.filter((p:any)=>p.date!==at),{date:at,prices}],sm:Map<string,any>=new Map((st.data||[]).map((r:any)=>[`${r.user_id}|${r.arbitrage_id}|${r.comparative_symbol}`,r] as [string,any])),tm:Map<string,any>=new Map((trs.data||[]).map((r:any)=>[`${r.user_id}|${r.trade_id}`,r] as [string,any]));
   const events:any[]=[],obs:any[]=[],su:any[]=[],tu:any[]=[],previews:any[]=[];
   for(const uid of userIds)for(const arbId of Object.keys(ARBS)){const c=ARBS[arbId];for(const asset of c.comparatives){const rs=pts.map((p:any)=>ratio(p.prices,asset,c.anchor)).filter((x:any)=>x!==null);if(rs.length<LOOKBACK)continue;const r=rs.at(-1),w=rs.slice(-LOOKBACK),avg=mean(w),stdev=sd(w),zs=stdev===0?0:(r-avg)/stdev,g=avg===0?null:r/avg-1,s=signal(zs),k=`${uid}|${arbId}|${asset}`,prev=sm.get(k),ps=prev?.signal??"HOLD",trade=targetTrades.find((t:any)=>t.user_id===uid&&t.arbitrage_id===arbId);
     const base={user_id:uid,arbitrage_id:arbId,arbitrage_name:c.name,comparative_symbol:asset,strategy:c.strategies[asset],signal:s,previous_signal:ps,gap_pct:g,zscore:zs,has_open_trade:!!trade,evaluated_at:at};let th=prev?.gap_threshold_alerted??null,cy=prev?.cycle_started_at??null;
