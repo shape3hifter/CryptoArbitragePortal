@@ -46,16 +46,11 @@
   }
 
   async function fetchBackendQuote(url) {
-    const current = readSession();
-    if (!SUPA_URL || !SUPABASE_CONFIG.anonKey || !current?.access_token) return null;
-    const target = new URL(url);
-    const endpoint = `${SUPA_URL}${LIVE_FN}${target.search}`;
+    if (!SUPA_URL || !SUPABASE_CONFIG.anonKey) return null;
     try {
-      const res = await originalFetch(endpoint, { cache: 'no-store', headers: { apikey: SUPABASE_CONFIG.anonKey, Authorization: `Bearer ${current.access_token}`, Accept: 'application/json' } });
-      if (res.status === 401 && await refreshSession()) {
-        const next = readSession();
-        return originalFetch(endpoint, { cache: 'no-store', headers: { apikey: SUPABASE_CONFIG.anonKey, Authorization: `Bearer ${next.access_token}`, Accept: 'application/json' } });
-      }
+      const target = new URL(url);
+      const endpoint = `${SUPA_URL}${LIVE_FN}${target.search}`;
+      const res = await originalFetch(endpoint, { cache: 'no-store', headers: { apikey: SUPABASE_CONFIG.anonKey, Accept: 'application/json' } });
       return res.ok ? res : null;
     } catch { return null; }
   }
@@ -107,7 +102,7 @@
     if (res.status !== 401 || !isSupabase || init.__cryptoArbRetried) return res;
     const refreshed = await refreshSession();
     if (!refreshed) { clearSession(); return res; }
-    const nextInit = { ...init, __cryptoArbRetried: true };
+    const nextInit = { ...init };
     const headers = new Headers(init.headers || (input instanceof Request ? input.headers : undefined));
     const current = readSession();
     if (current?.access_token) headers.set('Authorization', `Bearer ${current.access_token}`);
