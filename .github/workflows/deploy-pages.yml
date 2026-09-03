@@ -39,11 +39,11 @@ jobs:
           replacements = {
               'trades-ui.js?v=20260901': 'trades-ui.js?v=20260903-1',
               'runtime-fixes.js?v=20260903-1': 'runtime-fixes.js?v=20260903-2',
-              'simulation-display-fix.js?v=20260901-2': 'simulation-display-fix.js?v=20260903-2'
+              'simulation-display-fix.js?v=20260901-2': 'simulation-display-fix.js?v=20260903-3'
           }
           for old, new in replacements.items():
               html = html.replace(old, new)
-          tag = '<script src="simulation-display-fix.js?v=20260903-2" defer></script>'
+          tag = '<script src="simulation-display-fix.js?v=20260903-3" defer></script>'
           if tag not in html:
               html = html.replace('</body>', f'{tag}\n</body>', 1)
           p.write_text(html, encoding='utf-8')
