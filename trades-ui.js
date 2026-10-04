@@ -13,6 +13,9 @@
   let session = loadSession();
   let simulationState = null;
   let sessionRefreshInFlight = null;
+  let authClient = null;
+  let mfaReady = false;
+  let mfaVerifiedFactor = null;
   const $ = id => document.getElementById(id);
 
   function loadSession() {
@@ -58,6 +61,279 @@
     })().finally(() => { sessionRefreshInFlight = null; });
     return sessionRefreshInFlight;
   }
+  async function getAuthClient() {
+    if (authClient) return authClient;
+    if (!cfg.url || !cfg.anonKey) throw new Error('Supabase não configurado.');
+    const mod = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/+esm');
+    authClient = mod.createClient(cfg.url, cfg.anonKey, {
+      auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
+    });
+    return authClient;
+  }
+
+  async function syncAuthClientSession() {
+    if (!session?.access_token || !session?.refresh_token) return null;
+    const client = await getAuthClient();
+    const { data, error } = await client.auth.setSession({
+      access_token: session.access_token,
+      refresh_token: session.refresh_token
+    });
+    if (error) throw error;
+    return data.session;
+  }
+
+  async function readMfaState() {
+    const client = await getAuthClient();
+    await syncAuthClientSession();
+    const { data, error } = await client.auth.mfa.getAuthenticatorAssuranceLevel();
+    if (error) throw error;
+    return data;
+  }
+
+  async function listVerifiedTotpFactors() {
+    const client = await getAuthClient();
+    await syncAuthClientSession();
+    const { data, error } = await client.auth.mfa.listFactors();
+    if (error) throw error;
+    return {
+      factors: data || {},
+      verified: (data?.totp || []).filter(f => f.status === 'verified')
+    };
+  }
+
+  async function saveCurrentAuthSession() {
+    const client = await getAuthClient();
+    const { data, error } = await client.auth.getSession();
+    if (error) throw error;
+    if (data.session) {
+      saveSession({
+        access_token: data.session.access_token,
+        refresh_token: data.session.refresh_token,
+        expires_at: data.session.expires_at,
+        user: data.session.user
+      });
+    }
+    return data.session;
+  }
+
+  function injectMfaStyles() {
+    if ($('mfaStyles')) return;
+    const style = document.createElement('style');
+    style.id = 'mfaStyles';
+    style.textContent = `
+      .mfa-qr{display:block;width:220px;height:220px;margin:12px auto;background:#fff;border-radius:12px;padding:10px}
+      .mfa-secret{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;word-break:break-all;background:var(--panel2);border:1px solid var(--border);border-radius:10px;padding:10px;font-size:12px}
+      .mfa-help{font-size:12px;color:var(--muted);line-height:1.5;margin-top:8px}
+      .mfa-code{letter-spacing:.3em;font-size:20px;text-align:center}
+    `;
+    document.head.appendChild(style);
+  }
+
+  function ensureMfaChallengeModal() {
+    if ($('mfaChallengeModal')) return;
+    const modal = document.createElement('div');
+    modal.id = 'mfaChallengeModal';
+    modal.className = 'trade-modal hidden';
+    modal.innerHTML = '<div class="trade-modal-backdrop"></div><div class="trade-dialog" role="dialog" aria-modal="true" aria-labelledby="mfaChallengeTitle"><div class="section-head"><div><h2 id="mfaChallengeTitle">Verificação em duas etapas</h2><div class="note">Acesso aos Trades</div></div></div><form id="mfaChallengeForm"><div class="note">Abra seu aplicativo autenticador e informe o código de 6 dígitos.</div><div class="field" style="margin-top:12px"><label for="mfaChallengeCode">Código</label><input id="mfaChallengeCode" class="mfa-code" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" required></div><div id="mfaChallengeMsg" class="note" style="margin-top:10px"></div><div class="actions"><button id="mfaChallengeVerifyBtn" class="btn primary" type="submit">Verificar</button><button id="mfaChallengeCancelBtn" class="btn" type="button">Cancelar</button></div></form></div></div>';
+    document.body.appendChild(modal);
+  }
+
+  async function challengeMfa(factorId) {
+    ensureMfaChallengeModal();
+    const client = await getAuthClient();
+    const modal = $('mfaChallengeModal');
+    const form = $('mfaChallengeForm');
+    const codeInput = $('mfaChallengeCode');
+    const msg = $('mfaChallengeMsg');
+    const verifyBtn = $('mfaChallengeVerifyBtn');
+    const cancelBtn = $('mfaChallengeCancelBtn');
+
+    const challenge = await client.auth.mfa.challenge({ factorId });
+    if (challenge.error) throw challenge.error;
+    const challengeId = challenge.data.id;
+
+    modal.classList.remove('hidden');
+    msg.textContent = '';
+    codeInput.value = '';
+    codeInput.focus();
+
+    return new Promise(resolve => {
+      let settled = false;
+      const finish = result => {
+        if (settled) return;
+        settled = true;
+        modal.classList.add('hidden');
+        form.onsubmit = null;
+        cancelBtn.onclick = null;
+        resolve(result);
+      };
+
+      cancelBtn.onclick = () => finish(false);
+      form.onsubmit = async event => {
+        event.preventDefault();
+        const code = codeInput.value.trim();
+        if (!/^\d{6}$/.test(code)) {
+          msg.textContent = 'Informe o código de 6 dígitos.';
+          return;
+        }
+        verifyBtn.disabled = true;
+        verifyBtn.textContent = 'Verificando…';
+        msg.textContent = '';
+        try {
+          const result = await client.auth.mfa.verify({ factorId, challengeId, code });
+          if (result.error) throw result.error;
+          await saveCurrentAuthSession();
+          mfaReady = true;
+          finish(true);
+        } catch (e) {
+          msg.textContent = e?.message || 'Código inválido ou expirado.';
+          verifyBtn.disabled = false;
+          verifyBtn.textContent = 'Verificar';
+        }
+      };
+    });
+  }
+
+  async function ensureMfaForCurrentSession() {
+    if (!session?.access_token) {
+      mfaReady = false;
+      mfaVerifiedFactor = null;
+      return false;
+    }
+    try {
+      const assurance = await readMfaState();
+      if (assurance.currentLevel === 'aal2' || assurance.nextLevel === 'aal1') {
+        const listed = await listVerifiedTotpFactors();
+        mfaVerifiedFactor = listed.verified[0] || null;
+        mfaReady = true;
+        return true;
+      }
+      if (assurance.currentLevel === 'aal1' && assurance.nextLevel === 'aal2') {
+        const listed = await listVerifiedTotpFactors();
+        const factor = listed.verified[0];
+        if (!factor) throw new Error('Existe uma exigência de MFA, mas nenhum autenticador TOTP verificado foi encontrado.');
+        mfaVerifiedFactor = factor;
+        const verified = await challengeMfa(factor.id);
+        if (!verified) {
+          await logout();
+          return false;
+        }
+        const refreshed = await readMfaState();
+        if (refreshed.currentLevel !== 'aal2') throw new Error('A verificação MFA não elevou a sessão para AAL2.');
+        mfaReady = true;
+        return true;
+      }
+      mfaReady = true;
+      return true;
+    } catch (e) {
+      mfaReady = false;
+      const msg = $('authMsg');
+      if (msg) msg.textContent = `MFA: ${e?.message || 'não foi possível validar a segunda etapa.'}`;
+      return false;
+    }
+  }
+
+  function ensureMfaSettingsModal() {
+    injectMfaStyles();
+    if ($('mfaSettingsModal')) return;
+    const modal = document.createElement('div');
+    modal.id = 'mfaSettingsModal';
+    modal.className = 'trade-modal hidden';
+    modal.innerHTML = '<div class="trade-modal-backdrop"></div><div class="trade-dialog" role="dialog" aria-modal="true" aria-labelledby="mfaSettingsTitle"><div class="section-head"><div><h2 id="mfaSettingsTitle">Segurança — MFA</h2><div class="note">Aplicativo autenticador (TOTP)</div></div><button id="mfaSettingsClose" class="btn" type="button">Fechar</button></div><div id="mfaSettingsBody"></div></div></div>';
+    document.body.appendChild(modal);
+    $('mfaSettingsClose').onclick = () => modal.classList.add('hidden');
+    modal.querySelector('.trade-modal-backdrop').onclick = () => modal.classList.add('hidden');
+  }
+
+  async function renderMfaSettings() {
+    ensureMfaSettingsModal();
+    const body = $('mfaSettingsBody');
+    body.innerHTML = '<div class="note">Consultando o status do MFA…</div>';
+    try {
+      const listed = await listVerifiedTotpFactors();
+      mfaVerifiedFactor = listed.verified[0] || null;
+      if (mfaVerifiedFactor) {
+        mfaReady = true;
+        body.innerHTML = '<div><strong>MFA ativado</strong><div class="mfa-help">Seu acesso aos Trades exige o código do aplicativo autenticador após a senha.</div><div class="actions" style="margin-top:14px"><button id="mfaDisableBtn" class="btn danger" type="button">Desativar MFA</button></div><div id="mfaSettingsMsg" class="note" style="margin-top:10px"></div></div>';
+        $('mfaDisableBtn').onclick = async () => {
+          const msg = $('mfaSettingsMsg');
+          $('mfaDisableBtn').disabled = true;
+          try {
+            const client = await getAuthClient();
+            const { error } = await client.auth.mfa.unenroll({ factorId: mfaVerifiedFactor.id });
+            if (error) throw error;
+            await client.auth.refreshSession();
+            await saveCurrentAuthSession();
+            mfaVerifiedFactor = null;
+            mfaReady = true;
+            msg.textContent = 'MFA desativado.';
+            await renderMfaSettings();
+          } catch (e) {
+            msg.textContent = e?.message || 'Não foi possível desativar o MFA.';
+            $('mfaDisableBtn').disabled = false;
+          }
+        };
+        return;
+      }
+
+      body.innerHTML = '<div><strong>MFA não configurado</strong><div class="mfa-help">Você poderá proteger este acesso com um aplicativo autenticador, como Google Authenticator, Microsoft Authenticator ou 1Password.</div><div class="actions" style="margin-top:14px"><button id="mfaEnrollBtn" class="btn primary" type="button">Ativar MFA</button></div><div id="mfaSettingsMsg" class="note" style="margin-top:10px"></div></div>';
+      $('mfaEnrollBtn').onclick = startMfaEnrollment;
+    } catch (e) {
+      body.innerHTML = `<div class="note">Não foi possível consultar o MFA: ${escapeHtml(e?.message || 'erro desconhecido')}</div>`;
+    }
+  }
+
+  async function startMfaEnrollment() {
+    ensureMfaSettingsModal();
+    const body = $('mfaSettingsBody');
+    body.innerHTML = '<div class="note">Gerando o QR Code de configuração…</div>';
+    try {
+      const client = await getAuthClient();
+      await syncAuthClientSession();
+      const { data, error } = await client.auth.mfa.enroll({ factorType: 'totp' });
+      if (error) throw error;
+      const factorId = data.id;
+      const qr = data.totp?.qr_code || '';
+      const secret = data.totp?.secret || '';
+      body.innerHTML = '<div><strong>1. Adicione o autenticador</strong><div class="mfa-help">Escaneie o QR Code com seu aplicativo autenticador. Guarde também o segredo abaixo como backup.</div><img id="mfaQrCode" class="mfa-qr" alt="QR Code para ativação do MFA"><div class="mfa-help">Segredo de configuração:</div><div id="mfaSecret" class="mfa-secret"></div><div class="field" style="margin-top:12px"><label for="mfaEnrollCode">Código do aplicativo</label><input id="mfaEnrollCode" class="mfa-code" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" required></div><div id="mfaEnrollMsg" class="note" style="margin-top:10px"></div><div class="actions"><button id="mfaEnrollVerifyBtn" class="btn primary" type="button">Confirmar e ativar</button><button id="mfaEnrollCancelBtn" class="btn" type="button">Cancelar</button></div></div>';
+      const img = $('mfaQrCode');
+      if (img && qr) img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(qr)}`;
+      $('mfaSecret').textContent = secret || 'O aplicativo não retornou o segredo textual.';
+      $('mfaEnrollCancelBtn').onclick = async () => {
+        try { await client.auth.mfa.unenroll({ factorId }); } catch {}
+        await renderMfaSettings();
+      };
+      $('mfaEnrollVerifyBtn').onclick = async () => {
+        const code = $('mfaEnrollCode').value.trim();
+        const msg = $('mfaEnrollMsg');
+        if (!/^\d{6}$/.test(code)) {
+          msg.textContent = 'Informe o código de 6 dígitos do aplicativo.';
+          return;
+        }
+        $('mfaEnrollVerifyBtn').disabled = true;
+        $('mfaEnrollVerifyBtn').textContent = 'Ativando…';
+        msg.textContent = '';
+        try {
+          const challenge = await client.auth.mfa.challenge({ factorId });
+          if (challenge.error) throw challenge.error;
+          const verify = await client.auth.mfa.verify({ factorId, challengeId: challenge.data.id, code });
+          if (verify.error) throw verify.error;
+          await saveCurrentAuthSession();
+          mfaVerifiedFactor = { id: factorId, status: 'verified', factor_type: 'totp' };
+          mfaReady = true;
+          msg.textContent = 'MFA ativado com sucesso.';
+          setTimeout(() => { $('mfaSettingsModal')?.classList.add('hidden'); authUi(); }, 600);
+        } catch (e) {
+          msg.textContent = e?.message || 'Não foi possível verificar o código.';
+          $('mfaEnrollVerifyBtn').disabled = false;
+          $('mfaEnrollVerifyBtn').textContent = 'Confirmar e ativar';
+        }
+      };
+    } catch (e) {
+      body.innerHTML = `<div class="note">Não foi possível iniciar o MFA: ${escapeHtml(e?.message || 'erro desconhecido')}</div>`;
+    }
+  }
+
   function currentArb() {
     const select = $('arbitrageSelect');
     const selectedId = String(select?.value || '');
@@ -141,12 +417,15 @@
     const card = $('tradesPanel'); if (!card) return;
     if (!$('tradeAuthBar')) {
       const bar = document.createElement('div'); bar.id = 'tradeAuthBar'; bar.style.cssText = 'display:flex;justify-content:space-between;align-items:center;gap:8px;margin:6px 0 10px;';
-      bar.innerHTML = '<span id="tradeAuthStatus" class="note"></span><div class="actions" style="margin-top:0"><button id="tradeLoginBtn" class="btn" type="button">Entrar</button><button id="tradeLogoutBtn" class="btn" type="button" style="display:none">Sair</button></div>';
-      card.querySelector('.section-head')?.after(bar); $('tradeLoginBtn').onclick = showAuth; $('tradeLogoutBtn').onclick = logout;
+      bar.innerHTML = '<span id="tradeAuthStatus" class="note"></span><div class="actions" style="margin-top:0"><button id="tradeLoginBtn" class="btn" type="button">Entrar</button><button id="tradeMfaBtn" class="btn" type="button" style="display:none">MFA</button><button id="tradeLogoutBtn" class="btn" type="button" style="display:none">Sair</button></div>';
+      card.querySelector('.section-head')?.after(bar); $('tradeLoginBtn').onclick = showAuth; $('tradeMfaBtn').onclick = () => { ensureMfaSettingsModal(); $('mfaSettingsModal').classList.remove('hidden'); renderMfaSettings(); }; $('tradeLogoutBtn').onclick = logout;
     }
     const logged = !!session?.access_token;
     $('tradeAuthStatus').textContent = logged ? `Usuário: ${session.user?.email || 'autenticado'}` : 'Faça login para gravar e consultar seus trades.';
-    $('tradeLoginBtn').style.display = logged ? 'none' : ''; $('tradeLogoutBtn').style.display = logged ? '' : 'none';
+    $('tradeLoginBtn').style.display = logged ? 'none' : '';
+    $('tradeMfaBtn').style.display = logged ? '' : 'none';
+    $('tradeMfaBtn').textContent = mfaVerifiedFactor ? 'MFA ativo' : 'Ativar MFA';
+    $('tradeLogoutBtn').style.display = logged ? '' : 'none';
   }
   function showAuth() {
     if (!$('tradeAuthModal')) {
@@ -156,8 +435,45 @@
     }
     $('tradeAuthModal').classList.remove('hidden');
   }
-  async function login() { const msg = $('authMsg'); msg.textContent = 'Entrando…'; try { const b = await api('/auth/v1/token?grant_type=password', { method: 'POST', body: JSON.stringify({ email: $('authEmail').value.trim(), password: $('authPassword').value }) }, false); saveSession({ access_token: b.access_token, refresh_token: b.refresh_token, expires_at: b.expires_at, user: b.user }); $('tradeAuthModal').classList.add('hidden'); authUi(); await renderTrades(); } catch (e) { msg.textContent = `Erro: ${e.message}`; } }
-  async function signup() { const msg = $('authMsg'); const password = $('authPassword').value; if (!validPassword(password)) { msg.textContent = passwordPolicyMessage(); return; } msg.textContent = 'Criando conta…'; try { const redirectTo = `${window.location.origin}${window.location.pathname}`; const b = await api('/auth/v1/signup', { method: 'POST', body: JSON.stringify({ email: $('authEmail').value.trim(), password: $('authPassword').value, options: { emailRedirectTo: redirectTo } }) }, false); if (b?.access_token) { saveSession({ access_token: b.access_token, refresh_token: b.refresh_token, expires_at: b.expires_at, user: b.user }); $('tradeAuthModal').classList.add('hidden'); authUi(); await renderTrades(); } else msg.textContent = 'Conta criada. Se a confirmação por e-mail estiver habilitada, confirme o e-mail e depois entre.'; } catch (e) { msg.textContent = `Erro: ${e.message}`; } }
+  async function login() {
+    const msg = $('authMsg');
+    msg.textContent = 'Entrando…';
+    try {
+      const b = await api('/auth/v1/token?grant_type=password', { method: 'POST', body: JSON.stringify({ email: $('authEmail').value.trim(), password: $('authPassword').value }) }, false);
+      saveSession({ access_token: b.access_token, refresh_token: b.refresh_token, expires_at: b.expires_at, user: b.user });
+      authUi();
+      const ready = await ensureMfaForCurrentSession();
+      if (!ready) return;
+      $('tradeAuthModal').classList.add('hidden');
+      authUi();
+      await renderTrades();
+    } catch (e) {
+      msg.textContent = `Erro: ${e.message}`;
+      mfaReady = false;
+    }
+  }
+  async function signup() {
+    const msg = $('authMsg');
+    const password = $('authPassword').value;
+    if (!validPassword(password)) { msg.textContent = passwordPolicyMessage(); return; }
+    msg.textContent = 'Criando conta…';
+    try {
+      const redirectTo = `${window.location.origin}${window.location.pathname}`;
+      const b = await api('/auth/v1/signup', { method: 'POST', body: JSON.stringify({ email: $('authEmail').value.trim(), password, options: { emailRedirectTo: redirectTo } }) }, false);
+      if (b?.access_token) {
+        saveSession({ access_token: b.access_token, refresh_token: b.refresh_token, expires_at: b.expires_at, user: b.user });
+        const ready = await ensureMfaForCurrentSession();
+        if (!ready) return;
+        $('tradeAuthModal').classList.add('hidden');
+        authUi();
+        await renderTrades();
+      } else {
+        msg.textContent = 'Conta criada. Se a confirmação por e-mail estiver habilitada, confirme o e-mail e depois entre.';
+      }
+    } catch (e) {
+      msg.textContent = `Erro: ${e.message}`;
+    }
+  }
 
 
   let recoveryClient = null;
@@ -347,6 +663,10 @@
 
   async function renderTrades() {
     const open = $('tradesOpenEmpty'), closed = $('tradesClosedEmpty'); if (!open || !closed) return;
+    if (!mfaReady && session?.access_token) {
+      const ready = await ensureMfaForCurrentSession();
+      if (!ready) { open.textContent = 'Verificação MFA necessária para acessar seus trades.'; closed.textContent = ''; authUi(); return; }
+    }
     document.querySelectorAll('.trade-row').forEach(el => el.remove());
     if (!(await ensureFreshSession())) { open.textContent = 'Faça login para consultar seus trades.'; closed.textContent = 'Faça login para consultar seus trades.'; authUi(); return; }
     const arb = currentArb();
@@ -366,6 +686,22 @@
   function editTrade(t, closeMode = false) { showForm(t, closeMode); }
   async function deleteTrade(t) { if (!session?.access_token) return showAuth(); if (!confirm(`Excluir o trade ${t.strategy}?`)) return; try { await api(`/rest/v1/trades?id=eq.${encodeURIComponent(t.id)}&user_id=eq.${encodeURIComponent(session.user.id)}`, { method: 'DELETE' }); await renderTrades(); } catch (e) { alert(`Erro ao excluir: ${e.message}`); } }
 
-  function init() { if (window.__cryptoArbTradesUiInitialized) return; window.__cryptoArbTradesUiInitialized = true; injectSimulationStyles(); authUi(); $('newTradeBtn')?.addEventListener('click', window.openTradeVisualForm); $('tradeVisualForm')?.addEventListener('submit', submitForm); document.addEventListener('input', e => { if (e.target?.closest('#tradeVisualModal')) updateForm(); }); document.addEventListener('change', e => { if (e.target?.id === 'tradeVisualStrategy' || e.target?.id === 'tradeVisualArbitrage') updateForm(); }); if (session?.access_token) renderTrades(); initRecoveryFlow(); }
+  async function init() {
+    if (window.__cryptoArbTradesUiInitialized) return;
+    window.__cryptoArbTradesUiInitialized = true;
+    injectSimulationStyles();
+    injectMfaStyles();
+    authUi();
+    $('newTradeBtn')?.addEventListener('click', window.openTradeVisualForm);
+    $('tradeVisualForm')?.addEventListener('submit', submitForm);
+    document.addEventListener('input', e => { if (e.target?.closest('#tradeVisualModal')) updateForm(); });
+    document.addEventListener('change', e => { if (e.target?.id === 'tradeVisualStrategy' || e.target?.id === 'tradeVisualArbitrage') updateForm(); });
+    initRecoveryFlow();
+    if (session?.access_token) {
+      const ready = await ensureMfaForCurrentSession();
+      authUi();
+      if (ready) await renderTrades();
+    }
+  }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init, { once: true }); else init();
 })();
