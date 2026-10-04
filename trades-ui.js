@@ -108,13 +108,149 @@
   function showAuth() {
     if (!$('tradeAuthModal')) {
       const modal = document.createElement('div'); modal.id = 'tradeAuthModal'; modal.className = 'trade-modal hidden';
-      modal.innerHTML = '<div class="trade-modal-backdrop"></div><div class="trade-dialog" role="dialog" aria-modal="true"><div class="section-head"><div><h2>Acesso aos Trades</h2><div class="note">Supabase Auth</div></div><button id="authClose" class="btn" type="button">Fechar</button></div><form id="authForm"><div class="trade-form-grid"><div class="field"><label>E-mail</label><input id="authEmail" type="email" autocomplete="email" required></div><div class="field"><label>Senha</label><input id="authPassword" type="password" minlength="6" autocomplete="current-password" required></div></div><div class="actions"><button class="btn primary" type="submit">Entrar</button><button id="signupBtn" class="btn" type="button">Criar conta</button></div><div id="authMsg" class="note" style="margin-top:10px"></div></form></div></div>';
+      modal.innerHTML = '<div class="trade-modal-backdrop"></div><div class="trade-dialog" role="dialog" aria-modal="true"><div class="section-head"><div><h2>Acesso aos Trades</h2><div class="note">Supabase Auth</div></div><button id="authClose" class="btn" type="button">Fechar</button></div><form id="authForm"><div class="trade-form-grid"><div class="field"><label>E-mail</label><input id="authEmail" type="email" autocomplete="email" required></div><div class="field"><label>Senha</label><input id="authPassword" type="password" minlength="12" autocomplete="current-password" required></div></div><div class="actions"><button class="btn primary" type="submit">Entrar</button><button id="signupBtn" class="btn" type="button">Criar conta</button><button id="forgotPasswordBtn" class="btn" type="button">Esqueci minha senha</button></div><div id="authMsg" class="note" style="margin-top:10px"></div></form></div></div>';
       document.body.appendChild(modal); $('authClose').onclick = () => modal.classList.add('hidden'); modal.querySelector('.trade-modal-backdrop').onclick = () => modal.classList.add('hidden'); $('authForm').onsubmit = async e => { e.preventDefault(); await login(); }; $('signupBtn').onclick = signup;
     }
     $('tradeAuthModal').classList.remove('hidden');
   }
   async function login() { const msg = $('authMsg'); msg.textContent = 'Entrando…'; try { const b = await api('/auth/v1/token?grant_type=password', { method: 'POST', body: JSON.stringify({ email: $('authEmail').value.trim(), password: $('authPassword').value }) }, false); saveSession({ access_token: b.access_token, refresh_token: b.refresh_token, expires_at: b.expires_at, user: b.user }); $('tradeAuthModal').classList.add('hidden'); authUi(); await renderTrades(); } catch (e) { msg.textContent = `Erro: ${e.message}`; } }
-  async function signup() { const msg = $('authMsg'); msg.textContent = 'Criando conta…'; try { const redirectTo = `${window.location.origin}${window.location.pathname}`; const b = await api('/auth/v1/signup', { method: 'POST', body: JSON.stringify({ email: $('authEmail').value.trim(), password: $('authPassword').value, options: { emailRedirectTo: redirectTo } }) }, false); if (b?.access_token) { saveSession({ access_token: b.access_token, refresh_token: b.refresh_token, expires_at: b.expires_at, user: b.user }); $('tradeAuthModal').classList.add('hidden'); authUi(); await renderTrades(); } else msg.textContent = 'Conta criada. Se a confirmação por e-mail estiver habilitada, confirme o e-mail e depois entre.'; } catch (e) { msg.textContent = `Erro: ${e.message}`; } }
+  async function signup() { const msg = $('authMsg'); const password = $('authPassword').value; if (!validPassword(password)) { msg.textContent = passwordPolicyMessage(); return; } msg.textContent = 'Criando conta…'; try { const redirectTo = `${window.location.origin}${window.location.pathname}`; const b = await api('/auth/v1/signup', { method: 'POST', body: JSON.stringify({ email: $('authEmail').value.trim(), password: $('authPassword').value, options: { emailRedirectTo: redirectTo } }) }, false); if (b?.access_token) { saveSession({ access_token: b.access_token, refresh_token: b.refresh_token, expires_at: b.expires_at, user: b.user }); $('tradeAuthModal').classList.add('hidden'); authUi(); await renderTrades(); } else msg.textContent = 'Conta criada. Se a confirmação por e-mail estiver habilitada, confirme o e-mail e depois entre.'; } catch (e) { msg.textContent = `Erro: ${e.message}`; } }
+
+
+  let recoveryClient = null;
+  let recoverySession = null;
+  let recoveryListener = null;
+
+  async function getRecoveryClient() {
+    if (recoveryClient) return recoveryClient;
+    if (!cfg.url || !cfg.anonKey) throw new Error('Supabase não configurado.');
+    const mod = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm');
+    recoveryClient = mod.createClient(cfg.url, cfg.anonKey, {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+        detectSessionInUrl: true
+      }
+    });
+    return recoveryClient;
+  }
+
+  function passwordPolicyMessage() {
+    return 'Use pelo menos 12 caracteres, com maiúscula, minúscula, número e símbolo.';
+  }
+
+  function validPassword(password) {
+    return typeof password === 'string'
+      && password.length >= 12
+      && /[a-z]/.test(password)
+      && /[A-Z]/.test(password)
+      && /[0-9]/.test(password)
+      && /[^A-Za-z0-9]/.test(password);
+  }
+
+  function showRecoveryModal() {
+    if (!$('passwordRecoveryModal')) {
+      const modal = document.createElement('div');
+      modal.id = 'passwordRecoveryModal';
+      modal.className = 'trade-modal hidden';
+      modal.innerHTML = '<div class="trade-modal-backdrop"></div><div class="trade-dialog" role="dialog" aria-modal="true" aria-labelledby="passwordRecoveryTitle"><div class="section-head"><div><h2 id="passwordRecoveryTitle">Redefinir senha</h2><div class="note">Acesso aos Trades</div></div></div><form id="passwordRecoveryForm"><div class="field"><label for="recoveryPassword">Nova senha</label><input id="recoveryPassword" type="password" minlength="12" autocomplete="new-password" required></div><div class="field"><label for="recoveryPasswordConfirm">Confirmar nova senha</label><input id="recoveryPasswordConfirm" type="password" minlength="12" autocomplete="new-password" required></div><div class="note" style="margin-top:10px">Use pelo menos 12 caracteres, com maiúscula, minúscula, número e símbolo.</div><div id="recoveryMsg" class="note" style="margin-top:10px"></div><div class="actions"><button id="recoverySaveBtn" class="btn primary" type="submit">Salvar nova senha</button></div></form></div></div>';
+      document.body.appendChild(modal);
+      $('passwordRecoveryForm').addEventListener('submit', async event => {
+        event.preventDefault();
+        const msg = $('recoveryMsg');
+        const save = $('recoverySaveBtn');
+        const password = $('recoveryPassword').value;
+        const confirm = $('recoveryPasswordConfirm').value;
+        if (!validPassword(password)) {
+          msg.textContent = passwordPolicyMessage();
+          return;
+        }
+        if (password !== confirm) {
+          msg.textContent = 'As duas senhas não são iguais.';
+          return;
+        }
+        if (!recoveryClient || !recoverySession) {
+          msg.textContent = 'A sessão de recuperação expirou. Solicite um novo e-mail de recuperação.';
+          return;
+        }
+        save.disabled = true;
+        save.textContent = 'Salvando…';
+        msg.textContent = '';
+        try {
+          const { error } = await recoveryClient.auth.updateUser({ password });
+          if (error) throw error;
+          await recoveryClient.auth.signOut().catch(() => {});
+          recoverySession = null;
+          saveSession(null);
+          history.replaceState({}, document.title, window.location.pathname + window.location.search);
+          modal.classList.add('hidden');
+          modal.setAttribute('aria-hidden', 'true');
+          if ($('tradeAuthModal')) $('tradeAuthModal').classList.remove('hidden');
+          if ($('authMsg')) $('authMsg').textContent = 'Senha alterada com sucesso. Faça login com a nova senha.';
+          authUi();
+        } catch (e) {
+          msg.textContent = e?.message || 'Não foi possível alterar a senha.';
+        } finally {
+          save.disabled = false;
+          save.textContent = 'Salvar nova senha';
+        }
+      });
+    }
+    const modal = $('passwordRecoveryModal');
+    modal.classList.remove('hidden');
+    modal.setAttribute('aria-hidden', 'false');
+    $('recoveryPassword').value = '';
+    $('recoveryPasswordConfirm').value = '';
+    $('recoveryMsg').textContent = '';
+    $('recoveryPassword').focus();
+  }
+
+  function handleRecoverySession(sessionValue) {
+    if (!sessionValue) return;
+    recoverySession = sessionValue;
+    showRecoveryModal();
+  }
+
+  async function initRecoveryFlow() {
+    try {
+      const client = await getRecoveryClient();
+      if (!recoveryListener) {
+        const { data } = client.auth.onAuthStateChange((event, sessionValue) => {
+          if (event === 'PASSWORD_RECOVERY') handleRecoverySession(sessionValue);
+        });
+        recoveryListener = data?.subscription || null;
+      }
+      const hash = window.location.hash ? new URLSearchParams(window.location.hash.slice(1)) : null;
+      const recoveryType = hash?.get('type');
+      if (recoveryType === 'recovery') {
+        const { data, error } = await client.auth.getSession();
+        if (error) throw error;
+        if (data.session) handleRecoverySession(data.session);
+      }
+    } catch (e) {
+      console.warn('Password recovery initialization failed', e);
+    }
+  }
+
+  async function requestPasswordReset() {
+    const msg = $('authMsg');
+    const email = $('authEmail').value.trim();
+    if (!email) {
+      msg.textContent = 'Informe o e-mail para receber o link de recuperação.';
+      $('authEmail').focus();
+      return;
+    }
+    msg.textContent = 'Enviando e-mail de recuperação…';
+    try {
+      const client = await getRecoveryClient();
+      await client.auth.resetPasswordForEmail(email, {
+        redirectTo: window.location.origin + window.location.pathname
+      });
+      msg.textContent = 'Se o e-mail estiver cadastrado, enviaremos um link para redefinir a senha. Verifique também a caixa de spam.';
+    } catch (e) {
+      msg.textContent = e?.message || 'Não foi possível solicitar a recuperação de senha.';
+    }
+  }
 
   function populateArbitrageSelect(select, selectedId) { if (!select) return; select.innerHTML = Object.values(ARBS).map(x => `<option value="${x.id}" ${x.id === selectedId ? 'selected' : ''}>${x.name}</option>`).join(''); }
   function setTradeModalTitle(title) { const modal = $('tradeVisualModal'); const h2 = modal?.querySelector('.section-head h2'); if (h2) h2.textContent = title; }
@@ -161,6 +297,6 @@
   function editTrade(t, closeMode = false) { showForm(t, closeMode); }
   async function deleteTrade(t) { if (!session?.access_token) return showAuth(); if (!confirm(`Excluir o trade ${t.strategy}?`)) return; try { await api(`/rest/v1/trades?id=eq.${encodeURIComponent(t.id)}&user_id=eq.${encodeURIComponent(session.user.id)}`, { method: 'DELETE' }); await renderTrades(); } catch (e) { alert(`Erro ao excluir: ${e.message}`); } }
 
-  function init() { if (window.__cryptoArbTradesUiInitialized) return; window.__cryptoArbTradesUiInitialized = true; injectSimulationStyles(); authUi(); $('newTradeBtn')?.addEventListener('click', window.openTradeVisualForm); $('tradeVisualForm')?.addEventListener('submit', submitForm); document.addEventListener('input', e => { if (e.target?.closest('#tradeVisualModal')) updateForm(); }); document.addEventListener('change', e => { if (e.target?.id === 'tradeVisualStrategy' || e.target?.id === 'tradeVisualArbitrage') updateForm(); }); if (session?.access_token) renderTrades(); }
+  function init() { if (window.__cryptoArbTradesUiInitialized) return; window.__cryptoArbTradesUiInitialized = true; injectSimulationStyles(); authUi(); $('newTradeBtn')?.addEventListener('click', window.openTradeVisualForm); $('tradeVisualForm')?.addEventListener('submit', submitForm); $('forgotPasswordBtn')?.addEventListener('click', requestPasswordReset); document.addEventListener('input', e => { if (e.target?.closest('#tradeVisualModal')) updateForm(); }); document.addEventListener('change', e => { if (e.target?.id === 'tradeVisualStrategy' || e.target?.id === 'tradeVisualArbitrage') updateForm(); }); if (session?.access_token) renderTrades(); initRecoveryFlow(); }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init, { once: true }); else init();
 })();
