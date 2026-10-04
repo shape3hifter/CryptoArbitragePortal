@@ -232,23 +232,49 @@
     }
   }
 
+  let passwordResetCooldownUntil = 0;
+
   async function requestPasswordReset() {
     const msg = $('authMsg');
+    const button = $('forgotPasswordBtn');
     const email = $('authEmail').value.trim();
     if (!email) {
       msg.textContent = 'Informe o e-mail para receber o link de recuperação.';
       $('authEmail').focus();
       return;
     }
+    if (Date.now() < passwordResetCooldownUntil) {
+      const seconds = Math.ceil((passwordResetCooldownUntil - Date.now()) / 1000);
+      msg.textContent = `Aguarde cerca de ${seconds}s antes de solicitar outro link.`;
+      return;
+    }
     msg.textContent = 'Enviando e-mail de recuperação…';
+    button && (button.disabled = true);
     try {
       const client = await getRecoveryClient();
-      await client.auth.resetPasswordForEmail(email, {
+      const { error } = await client.auth.resetPasswordForEmail(email, {
         redirectTo: window.location.origin + window.location.pathname
       });
+      if (error) throw error;
+      passwordResetCooldownUntil = Date.now() + 60000;
       msg.textContent = 'Se o e-mail estiver cadastrado, enviaremos um link para redefinir a senha. Verifique também a caixa de spam.';
     } catch (e) {
-      msg.textContent = e?.message || 'Não foi possível solicitar a recuperação de senha.';
+      const code = String(e?.code || '');
+      const message = String(e?.message || '');
+      if (code === 'over_email_send_rate_limit' || /rate limit|too many requests|429/i.test(message)) {
+        msg.textContent = 'O Supabase atingiu o limite de envio de e-mails. Aguarde e tente novamente mais tarde.';
+      } else {
+        msg.textContent = message || 'Não foi possível solicitar a recuperação de senha.';
+      }
+    } finally {
+      if (button) {
+        if (Date.now() < passwordResetCooldownUntil) {
+          const delay = passwordResetCooldownUntil - Date.now();
+          setTimeout(() => { button.disabled = false; }, delay);
+        } else {
+          button.disabled = false;
+        }
+      }
     }
   }
 
