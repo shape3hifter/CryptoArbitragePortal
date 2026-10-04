@@ -61,7 +61,7 @@ TRADES_MARKUP=r'''
 </script>
 <script src="supabase/config.js"></script>
 <script src="trades-ui.js?v=20261004-3"></script>
-<script src="runtime-fixes.js?v=20260901"></script>
+<script src="runtime-fixes.js?v=20261004-7"></script>
 '''
 def build():
  if not SOURCE_INDEX.exists() or not TRADES_UI_JS.exists() or not RUNTIME_FIXES_JS.exists() or not SUPABASE_CONFIG.exists(): raise SystemExit('Arquivos necessários não encontrados')
