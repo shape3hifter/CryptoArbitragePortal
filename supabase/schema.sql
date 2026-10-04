@@ -197,52 +197,61 @@ alter table public.hourly_arbitrage_observations enable row level security;
 alter table public.hourly_arbitrage_state enable row level security;
 alter table public.hourly_trade_state enable row level security;
 alter table public.hourly_arbitrage_message_preview enable row level security;
+alter table public.hourly_arbitrage_scheduler_config enable row level security;
 
 drop policy if exists trades_select_own on public.trades;
-create policy trades_select_own on public.trades for select using ((select auth.uid()) = user_id);
+create policy trades_select_own on public.trades for select to authenticated using ((select auth.uid()) = user_id);
 drop policy if exists trades_insert_own on public.trades;
-create policy trades_insert_own on public.trades for insert with check ((select auth.uid()) = user_id);
+create policy trades_insert_own on public.trades for insert to authenticated with check ((select auth.uid()) = user_id);
 drop policy if exists trades_update_own on public.trades;
-create policy trades_update_own on public.trades for update using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
+create policy trades_update_own on public.trades for update to authenticated using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
 drop policy if exists trades_delete_own on public.trades;
-create policy trades_delete_own on public.trades for delete using ((select auth.uid()) = user_id);
+create policy trades_delete_own on public.trades for delete to authenticated using ((select auth.uid()) = user_id);
 
 drop policy if exists trade_legs_select_own on public.trade_legs;
-create policy trade_legs_select_own on public.trade_legs for select using ((select auth.uid()) = user_id);
+create policy trade_legs_select_own on public.trade_legs for select to authenticated using ((select auth.uid()) = user_id);
 drop policy if exists trade_legs_insert_own on public.trade_legs;
-create policy trade_legs_insert_own on public.trade_legs for insert with check ((select auth.uid()) = user_id);
+create policy trade_legs_insert_own on public.trade_legs for insert to authenticated with check ((select auth.uid()) = user_id);
 drop policy if exists trade_legs_update_own on public.trade_legs;
-create policy trade_legs_update_own on public.trade_legs for update using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
+create policy trade_legs_update_own on public.trade_legs for update to authenticated using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
 drop policy if exists trade_legs_delete_own on public.trade_legs;
-create policy trade_legs_delete_own on public.trade_legs for delete using ((select auth.uid()) = user_id);
+create policy trade_legs_delete_own on public.trade_legs for delete to authenticated using ((select auth.uid()) = user_id);
 
 drop policy if exists trade_alerts_select_own on public.trade_alerts;
-create policy trade_alerts_select_own on public.trade_alerts for select using ((select auth.uid()) = user_id);
+create policy trade_alerts_select_own on public.trade_alerts for select to authenticated using ((select auth.uid()) = user_id);
 drop policy if exists trade_alerts_insert_own on public.trade_alerts;
-create policy trade_alerts_insert_own on public.trade_alerts for insert with check ((select auth.uid()) = user_id);
+create policy trade_alerts_insert_own on public.trade_alerts for insert to authenticated with check ((select auth.uid()) = user_id);
 drop policy if exists trade_alerts_update_own on public.trade_alerts;
-create policy trade_alerts_update_own on public.trade_alerts for update using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
+create policy trade_alerts_update_own on public.trade_alerts for update to authenticated using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
 drop policy if exists trade_alerts_delete_own on public.trade_alerts;
-create policy trade_alerts_delete_own on public.trade_alerts for delete using ((select auth.uid()) = user_id);
+create policy trade_alerts_delete_own on public.trade_alerts for delete to authenticated using ((select auth.uid()) = user_id);
 drop policy if exists trade_alert_events_select_own on public.trade_alert_events;
-create policy trade_alert_events_select_own on public.trade_alert_events for select using ((select auth.uid()) = user_id);
+create policy trade_alert_events_select_own on public.trade_alert_events for select to authenticated using ((select auth.uid()) = user_id);
 drop policy if exists trade_alert_events_insert_own on public.trade_alert_events;
-create policy trade_alert_events_insert_own on public.trade_alert_events for insert with check ((select auth.uid()) = user_id);
+create policy trade_alert_events_insert_own on public.trade_alert_events for insert to authenticated with check ((select auth.uid()) = user_id);
 
 drop policy if exists hourly_arbitrage_observations_select_own on public.hourly_arbitrage_observations;
-create policy hourly_arbitrage_observations_select_own on public.hourly_arbitrage_observations for select using ((select auth.uid()) = user_id);
+create policy hourly_arbitrage_observations_select_own on public.hourly_arbitrage_observations for select to authenticated using ((select auth.uid()) = user_id);
 drop policy if exists hourly_arbitrage_state_select_own on public.hourly_arbitrage_state;
-create policy hourly_arbitrage_state_select_own on public.hourly_arbitrage_state for select using ((select auth.uid()) = user_id);
+create policy hourly_arbitrage_state_select_own on public.hourly_arbitrage_state for select to authenticated using ((select auth.uid()) = user_id);
 drop policy if exists hourly_trade_state_select_own on public.hourly_trade_state;
-create policy hourly_trade_state_select_own on public.hourly_trade_state for select using ((select auth.uid()) = user_id);
+create policy hourly_trade_state_select_own on public.hourly_trade_state for select to authenticated using ((select auth.uid()) = user_id);
 drop policy if exists hourly_arbitrage_message_preview_select_own on public.hourly_arbitrage_message_preview;
-create policy hourly_arbitrage_message_preview_select_own on public.hourly_arbitrage_message_preview for select using ((select auth.uid()) = user_id);
+create policy hourly_arbitrage_message_preview_select_own on public.hourly_arbitrage_message_preview for select to authenticated using ((select auth.uid()) = user_id);
 drop policy if exists hourly_arbitrage_message_preview_insert_own on public.hourly_arbitrage_message_preview;
-create policy hourly_arbitrage_message_preview_insert_own on public.hourly_arbitrage_message_preview for insert with check ((select auth.uid()) = user_id);
+create policy hourly_arbitrage_message_preview_insert_own on public.hourly_arbitrage_message_preview for insert to authenticated with check ((select auth.uid()) = user_id);
 drop policy if exists hourly_arbitrage_message_preview_update_own on public.hourly_arbitrage_message_preview;
-create policy hourly_arbitrage_message_preview_update_own on public.hourly_arbitrage_message_preview for update using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
+create policy hourly_arbitrage_message_preview_update_own on public.hourly_arbitrage_message_preview for update to authenticated using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
 
 revoke all on table public.hourly_arbitrage_scheduler_config from public, anon, authenticated;
+drop policy if exists hourly_arbitrage_scheduler_config_no_client_access on public.hourly_arbitrage_scheduler_config;
+create policy hourly_arbitrage_scheduler_config_no_client_access
+  on public.hourly_arbitrage_scheduler_config
+  as restrictive
+  for all
+  to anon, authenticated
+  using (false)
+  with check (false);
 
 -- ============================================================
 -- Hourly scheduler RPC
