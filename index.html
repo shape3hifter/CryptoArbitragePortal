@@ -95,7 +95,7 @@ main{max-width:1180px;margin:0 auto;padding:28px 20px 60px}.top{display:flex;jus
         <div class="field"><label for="fiat">Moeda</label><select id="fiat"><option>USD</option><option>BRL</option><option>EUR</option></select></div>
         <div class="field"><label for="anchor">Crypto anchor</label><select id="anchor"></select></div>
         <div class="field"><label for="lookback">Janela estatística</label><select id="lookback"><option value="30">30 dias</option><option value="60" selected>60 dias</option><option value="90">90 dias</option><option value="180">180 dias</option><option value="365">365 dias</option></select></div>
-        <div class="field"><label for="asof">Snapshot</label><input id="asof" type="datetime-local"></div>
+        <div class="field"><label for="asof">Snapshot</label><input id="asof" type="text" readonly aria-readonly="true" autocomplete="off" tabindex="-1" placeholder="Calculando…"></div>
         <div class="compare"><label style="display:block;color:var(--muted);font-size:12px;margin-bottom:6px">Ativos comparativos · 2 a 5</label><div id="checks" class="checks"></div></div>
       </div>
       <div class="actions"><button id="liveBtn" class="btn">⚡ Cotação agora</button></div>
@@ -255,7 +255,7 @@ const $=id=>document.getElementById(id);
 const uniq=a=>[...new Set(a)];
 function parseCSV(text){const lines=text.trim().split(/\r?\n/); if(!lines.length) return []; const head=lines[0].split(',').map(s=>s.trim()); const idx=Object.fromEntries(head.map((h,i)=>[h,i])); return lines.slice(1).filter(Boolean).map(l=>{const c=l.split(',');return {date:c[idx.date],time:c[idx.time]||'21:00',fiat:c[idx.fiat]||'USD',symbol:c[idx.symbol]?.toUpperCase(),price:Number(c[idx.price])}}).filter(r=>r.date&&r.symbol&&Number.isFinite(r.price));}
 function csvString(rs){const out=['date,time,fiat,symbol,price']; for(const r of rs.slice().sort((a,b)=>(a.date+' '+a.time).localeCompare(b.date+' '+b.time)||a.symbol.localeCompare(b.symbol))) out.push([r.date,r.time,r.fiat,r.symbol,r.price].join(',')); return out.join('\n');}
-function cutoff(){const value=$('asof').value; return value?new Date(value):new Date()}
+function cutoff(){const value=$('asof')?.dataset.iso; return value?new Date(value):new Date()}
 function usable(){const c=cutoff(); return rows.filter(r=>new Date(r.date+'T'+(r.time||'21:00')+':00')<=c).sort((a,b)=>(a.date+'T'+a.time).localeCompare(b.date+'T'+b.time));}
 let analysisCache={key:null,priceMap:null};
 function invalidateAnalysisCache(){analysisCache={key:null,priceMap:null};}
@@ -539,7 +539,7 @@ async function loadAssetHistory(symbol){
   finally{renderAssetsView();}
 }
 async function handleAssetAction(action,symbol){if(action==='edit')startEditAsset(symbol);else if(action==='toggle')toggleAsset(symbol);else if(action==='load')await loadAssetHistory(symbol);else if(action==='load-fiat')await loadFiatHistory(symbol);}
-function populateControls(){ensureSettings(); renderArbitrageSelector(); const fiat=$('fiat'); const lookback=$('lookback'); const asof=$('asof'); const anchor=$('anchor'); if(fiat)fiat.value=settings.fiat; if(lookback)lookback.value=String(settings.lookback); if(asof&&!asof.value)asof.value=localNowISO(); if(anchor){anchor.innerHTML=cryptoAssets().map(a=>`<option>${a}</option>`).join(''); anchor.value=settings.anchor;} renderChecks();}
+function populateControls(){ensureSettings(); renderArbitrageSelector(); const fiat=$('fiat'); const lookback=$('lookback'); const asof=$('asof'); const anchor=$('anchor'); if(fiat)fiat.value=settings.fiat; if(lookback)lookback.value=String(settings.lookback); if(asof){const iso=latestOfficialSnapshotISO(); asof.dataset.iso=iso; asof.value=iso?formatSnapshotBR(iso):'';} if(anchor){anchor.innerHTML=cryptoAssets().map(a=>`<option>${a}</option>`).join(''); anchor.value=settings.anchor;} renderChecks();}
 function renderChecks(){const arr=cryptoAssets().filter(a=>a!==settings.anchor); $('checks').innerHTML=arr.map(a=>`<label><input type="checkbox" data-comp="${a}" ${settings.comps.includes(a)?'checked':''}> ${a}</label>`).join(''); $('checks').querySelectorAll('input').forEach(i=>i.addEventListener('change',()=>{let next=[...$('checks').querySelectorAll('input:checked')].map(x=>x.dataset.comp); if(next.length<2){i.checked=true;return} if(next.length>5){i.checked=false;return} settings.comps=next; syncActiveArbitrageFromSettings(); invalidateAnalysisCache(); render();}));}
 function renderEntryFields(){const host=$('entryFields'); if(!host)return; const syms=[settings.anchor,...settings.comps]; host.innerHTML=syms.map(s=>`<div class="field" style="margin-top:8px"><label for="q_${s}">${s} — preço em ${settings.fiat} às 21:00</label><input id="q_${s}" type="number" step="any" inputmode="decimal" placeholder="Ex.: 0.1932"></div>`).join('')}
 function drawChart(svgId,datasets,thresholds){const svg=$(svgId); svg.innerHTML=''; const W=900,H=300,p={l:48,r:18,t:14,b:32}, x0=p.l,x1=W-p.r,y0=H-p.b,y1=p.t; const vals=datasets.flatMap(d=>d.values.filter(Number.isFinite)); if(!vals.length){svg.innerHTML='<text x="450" y="150" text-anchor="middle" fill="#9eb0d1">Sem dados suficientes</text>';return} let min=Math.min(...vals),max=Math.max(...vals); if(thresholds)for(const t of thresholds){min=Math.min(min,t);max=Math.max(max,t)} let span=max-min||1;min-=span*.08;max+=span*.08; const n=Math.max(...datasets.map(d=>d.values.length)); const x=i=>x0+(i/Math.max(1,n-1))*(x1-x0), y=v=>y0-((v-min)/(max-min))*(y0-y1); for(let i=0;i<4;i++){const yy=y0-(i/3)*(y0-y1);const l=line(x0,yy,x1,yy,'#2b3857',1);svg.appendChild(l)} if(thresholds)for(const t of thresholds){const l=line(x0,y(t),x1,y(t),'#7b89a8',1,'5 5');svg.appendChild(l);const tx=text(8,y(t)+4,'#9eb0d1',11,String(t));svg.appendChild(tx)} datasets.forEach((ds,j)=>{const pts=ds.values.map((v,i)=>Number.isFinite(v)?`${x(i)},${y(v)}`:null).filter(Boolean).join(' ');const poly=document.createElementNS('http://www.w3.org/2000/svg','polyline');poly.setAttribute('points',pts);poly.setAttribute('fill','none');poly.setAttribute('stroke',j%2?'var(--series2)':'var(--accent)');poly.setAttribute('stroke-width','2.2');svg.appendChild(poly)}); [0,Math.floor(n/2),n-1].forEach((i,j)=>{if(i<0)return;const t=text(x(i),H-9,'#9eb0d1',11,j===0?'start':j===2?'end':'middle',niceDate(datasets[0].dates[i]||''));svg.appendChild(t)});}
@@ -637,7 +637,26 @@ function renderAutomationStatus(){
 }
 function localNowISO(){
   const d=new Date(),pad=n=>String(n).padStart(2,'0');
-  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())+'T'+pad(d.getHours())+':'+pad(d.getMinutes());
+}
+function latestOfficialSnapshotISO(){
+  const symbols=[settings.anchor,...settings.comps].filter(Boolean);
+  const now=new Date();
+  const candidates=[...new Set(rows
+    .filter(r=>r.fiat==='USD' && symbols.includes(String(r.symbol||'').toUpperCase()))
+    .map(r=>r.date+'T'+(r.time||'21:00')+':00')
+    .filter(dt=>new Date(dt)<=now)
+  )].sort();
+  for(let i=candidates.length-1;i>=0;i--){
+    const dt=candidates[i];
+    if(symbols.every(s=>rows.some(r=>r.fiat==='USD' && String(r.symbol||'').toUpperCase()===s && (r.date+'T'+(r.time||'21:00')+':00')===dt))) return dt.slice(0,16);
+  }
+  return '';
+}
+function formatSnapshotBR(iso){
+  if(!iso)return '';
+  const d=new Date(iso),pad=n=>String(n).padStart(2,'0');
+  return pad(d.getDate())+'/'+pad(d.getMonth()+1)+'/'+d.getFullYear()+' '+pad(d.getHours())+':'+pad(d.getMinutes());
 }
 function temporaryDisplayTime(){return temporarySnapshot?new Date(temporarySnapshot.rawTime).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit'})+' BRT':'';}
 function hasOfficialSnapshotForDate(dateStr){const symbols=[settings.anchor,...settings.comps]; return symbols.every(s=>rows.some(r=>r.date===dateStr&&r.time==='21:00'&&r.fiat===settings.fiat&&r.symbol===s&&Number.isFinite(Number(r.price))));}
@@ -700,7 +719,7 @@ $('tabAtivos').addEventListener('click',()=>setView('ativos'));
 $('addAssetBtn').addEventListener('click',addAsset);
 $('clearAssetFormBtn').addEventListener('click',clearAssetForm);
 $('newAssetType').addEventListener('change',()=>{const type=$('newAssetType').value;$('newAssetCmcId').disabled=type==='FIAT';if(type==='FIAT')$('newAssetCmcId').value='';});
-$('fiat')?.addEventListener('change',e=>{settings.fiat=e.target.value;syncActiveArbitrageFromSettings();invalidateAnalysisCache();saveModel();render()}); $('anchor')?.addEventListener('change',e=>{settings.anchor=e.target.value;settings.comps=cryptoAssets().filter(a=>a!==settings.anchor).slice(0,Math.min(2,cryptoAssets().length-1));syncActiveArbitrageFromSettings();invalidateAnalysisCache();saveModel();render()}); $('lookback')?.addEventListener('change',e=>{settings.lookback=Number(e.target.value);syncActiveArbitrageFromSettings();invalidateAnalysisCache();saveModel();render()}); $('asof')?.addEventListener('change',render);
+$('fiat')?.addEventListener('change',e=>{settings.fiat=e.target.value;syncActiveArbitrageFromSettings();invalidateAnalysisCache();saveModel();render()}); $('anchor')?.addEventListener('change',e=>{settings.anchor=e.target.value;settings.comps=cryptoAssets().filter(a=>a!==settings.anchor).slice(0,Math.min(2,cryptoAssets().length-1));syncActiveArbitrageFromSettings();invalidateAnalysisCache();saveModel();render()}); $('lookback')?.addEventListener('change',e=>{settings.lookback=Number(e.target.value);syncActiveArbitrageFromSettings();invalidateAnalysisCache();saveModel();render()}); 
 $('liveBtn').addEventListener('click',fetchLivePrices);
 setInterval(async()=>{if(temporarySnapshot){const today21=new Date();today21.setHours(21,0,0,0);if(new Date()>=today21){await refreshRemoteData();maybeClearTemporaryAfterRemote();}}},5*60*1000);
 
@@ -722,7 +741,6 @@ function applyFreshStartReset(){
   syncKnownAssetMetadata();
   saveModel();
   populateControls();
-  if($('asof')&&!$('asof').value) $('asof').value=localNowISO();
   renderArbitrageSelector();
   $('newAssetType').dispatchEvent(new Event('change'));
   setView('arbitragens');
