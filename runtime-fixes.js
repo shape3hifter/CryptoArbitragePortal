@@ -2,7 +2,8 @@
   'use strict';
 
   const SUPABASE_CONFIG = window.CRYPTO_ARB_SUPABASE_CONFIG || {};
-  const SESSION_KEY = 'cryptoArbSupabaseSession';
+  const SESSION_KEY = 'cryptoArbSupabaseSessionV2';
+  const LEGACY_SESSION_KEY = 'cryptoArbSupabaseSession';
   const SUPA_URL = String(SUPABASE_CONFIG.url || '').replace(/\/$/, '');
   const originalFetch = window.fetch.bind(window);
   let refreshInFlight = null;
@@ -12,11 +13,30 @@
   const CMC_TO_CG = { 2010: 'cardano', 39064: 'midnight-3', 25264: 'snek', 5426: 'solana', 23095: 'bonk', 28752: 'dogwifcoin' };
 
   function readSession() {
-    try { return JSON.parse(localStorage.getItem(SESSION_KEY) || 'null'); } catch { return null; }
+    try {
+      const current = sessionStorage.getItem(SESSION_KEY);
+      if (current) return JSON.parse(current);
+      const legacy = localStorage.getItem(LEGACY_SESSION_KEY);
+      if (!legacy) return null;
+      sessionStorage.setItem(SESSION_KEY, legacy);
+      localStorage.removeItem(LEGACY_SESSION_KEY);
+      return JSON.parse(legacy);
+    } catch {
+      try { sessionStorage.removeItem(SESSION_KEY); localStorage.removeItem(LEGACY_SESSION_KEY); } catch {}
+      return null;
+    }
+  }
+
+  function writeSession(value) {
+    try {
+      if (value) sessionStorage.setItem(SESSION_KEY, JSON.stringify(value));
+      else sessionStorage.removeItem(SESSION_KEY);
+      localStorage.removeItem(LEGACY_SESSION_KEY);
+    } catch {}
   }
 
   function clearSession() {
-    localStorage.removeItem(SESSION_KEY);
+    writeSession(null);
     const logout = document.getElementById('tradeLogoutBtn');
     if (logout && logout.style.display !== 'none') logout.click();
     window.dispatchEvent(new CustomEvent('crypto-arb-auth-expired'));
@@ -32,7 +52,7 @@
         if (!res.ok) return false;
         const body = await res.json();
         if (!body?.access_token) return false;
-        localStorage.setItem(SESSION_KEY, JSON.stringify({ access_token: body.access_token, refresh_token: body.refresh_token || current.refresh_token, expires_at: body.expires_at, user: body.user || current.user }));
+        writeSession({ access_token: body.access_token, refresh_token: body.refresh_token || current.refresh_token, expires_at: body.expires_at, user: body.user || current.user });
         return true;
       } catch { return false; }
     })().finally(() => { refreshInFlight = null; });
