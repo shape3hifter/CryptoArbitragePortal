@@ -138,9 +138,9 @@
     document.body.appendChild(modal);
   }
 
-  async function challengeMfa(factorId) {
+  async function challengeMfa(factorId, clientOverride = null) {
     ensureMfaChallengeModal();
-    const client = await getAuthClient();
+    const client = clientOverride || await getAuthClient();
     const modal = $('mfaChallengeModal');
     const form = $('mfaChallengeForm');
     const codeInput = $('mfaChallengeCode');
@@ -182,7 +182,14 @@
         try {
           const result = await client.auth.mfa.verify({ factorId, challengeId, code });
           if (result.error) throw result.error;
-          await saveCurrentAuthSession();
+          if (clientOverride) {
+            const sessionResult = await client.getSession();
+            if (sessionResult.error) throw sessionResult.error;
+            if (sessionResult.data.session) recoverySession = sessionResult.data.session;
+          } else {
+            await saveCurrentAuthSession();
+            mfaReady = true;
+          }
           mfaReady = true;
           finish(true);
         } catch (e) {
@@ -543,7 +550,7 @@
             if (factorsResult.error) throw factorsResult.error;
             const factor = (factorsResult.data?.totp || []).find(f => f.status === 'verified');
             if (assurance.nextLevel !== 'aal2' || !factor) throw new Error('Esta conta exige MFA para alterar a senha. Faça a verificação em duas etapas e tente novamente.');
-            const verified = await challengeRecoveryMfa(factor.id);
+            const verified = await challengeMfa(factor.id, recoveryClient);
             if (!verified) { msg.textContent = 'A verificação MFA foi cancelada.'; return; }
           }
           const { error } = await recoveryClient.auth.updateUser({ password });
