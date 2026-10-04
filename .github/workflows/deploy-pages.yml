@@ -37,7 +37,7 @@ jobs:
           p = Path('dist/index.html')
           html = p.read_text(encoding='utf-8')
           replacements = {
-              'trades-ui.js?v=20260901': 'trades-ui.js?v=20261004-2',
+              'trades-ui.js?v=20260901': 'trades-ui.js?v=20261004-3',
               'runtime-fixes.js?v=20260901': 'runtime-fixes.js?v=20260903-6',
               'runtime-fixes.js?v=20260903-1': 'runtime-fixes.js?v=20260903-6',
               'runtime-fixes.js?v=20260903-2': 'runtime-fixes.js?v=20260903-6',

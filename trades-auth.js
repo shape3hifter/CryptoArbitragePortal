@@ -78,7 +78,7 @@
     const cfg = window.CRYPTO_ARB_SUPABASE_CONFIG || {};
     if (!cfg.url || !cfg.anonKey) throw new Error('Configuração do Supabase não encontrada.');
     setMessage('Conectando ao serviço de Trades…');
-    const mod = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm');
+    const mod = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/+esm');
     client = mod.createClient(cfg.url, cfg.anonKey);
     return client;
   }
