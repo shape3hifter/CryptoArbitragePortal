@@ -128,6 +128,7 @@ create table if not exists public.hourly_arbitrage_state (
   gap_pct numeric,
   zscore numeric,
   gap_threshold_alerted numeric,
+  buy_opportunity_alerted boolean NOT NULL DEFAULT false,
   cycle_started_at timestamptz,
   evaluated_at timestamptz not null,
   updated_at timestamptz not null default now(),
