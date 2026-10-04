@@ -297,7 +297,7 @@
       const secret = data.totp?.secret || '';
       body.innerHTML = '<div><strong>1. Adicione o autenticador</strong><div class="mfa-help">Escaneie o QR Code com seu aplicativo autenticador. Guarde também o segredo abaixo como backup.</div><img id="mfaQrCode" class="mfa-qr" alt="QR Code para ativação do MFA"><div class="mfa-help">Segredo de configuração:</div><div id="mfaSecret" class="mfa-secret"></div><div class="field" style="margin-top:12px"><label for="mfaEnrollCode">Código do aplicativo</label><input id="mfaEnrollCode" class="mfa-code" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" required></div><div id="mfaEnrollMsg" class="note" style="margin-top:10px"></div><div class="actions"><button id="mfaEnrollVerifyBtn" class="btn primary" type="button">Confirmar e ativar</button><button id="mfaEnrollCancelBtn" class="btn" type="button">Cancelar</button></div></div>';
       const img = $('mfaQrCode');
-      if (img && qr) img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(qr)}`;
+      if (img && qr) img.src = qr;
       $('mfaSecret').textContent = secret || 'O aplicativo não retornou o segredo textual.';
       $('mfaEnrollCancelBtn').onclick = async () => {
         try { await client.auth.mfa.unenroll({ factorId }); } catch {}
