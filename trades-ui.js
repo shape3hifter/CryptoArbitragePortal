@@ -8,19 +8,34 @@
   };
   const LIVE_FN = '/functions/v1/live-prices';
   const CG_IDS = { ADA: 'cardano', NIGHT: 'midnight-3', SNEK: 'snek', SOL: 'solana', BONK: 'bonk', WIF: 'dogwifcoin' };
-  const SESSION_KEY = 'cryptoArbSupabaseSession';
+  const SESSION_KEY = 'cryptoArbSupabaseSessionV2';
+  const LEGACY_SESSION_KEY = 'cryptoArbSupabaseSession';
   let session = loadSession();
   let simulationState = null;
   let sessionRefreshInFlight = null;
   const $ = id => document.getElementById(id);
 
   function loadSession() {
-    try { return JSON.parse(localStorage.getItem(SESSION_KEY) || 'null'); } catch { return null; }
+    try {
+      const current = sessionStorage.getItem(SESSION_KEY);
+      if (current) return JSON.parse(current);
+      const legacy = localStorage.getItem(LEGACY_SESSION_KEY);
+      if (!legacy) return null;
+      sessionStorage.setItem(SESSION_KEY, legacy);
+      localStorage.removeItem(LEGACY_SESSION_KEY);
+      return JSON.parse(legacy);
+    } catch {
+      try { sessionStorage.removeItem(SESSION_KEY); localStorage.removeItem(LEGACY_SESSION_KEY); } catch {}
+      return null;
+    }
   }
   function saveSession(value) {
     session = value;
-    if (value) localStorage.setItem(SESSION_KEY, JSON.stringify(value));
-    else localStorage.removeItem(SESSION_KEY);
+    try {
+      if (value) sessionStorage.setItem(SESSION_KEY, JSON.stringify(value));
+      else sessionStorage.removeItem(SESSION_KEY);
+      localStorage.removeItem(LEGACY_SESSION_KEY);
+    } catch {}
   }
   async function ensureFreshSession() {
     if (!session?.refresh_token || !cfg.url || !cfg.anonKey) return !!session?.access_token;
@@ -72,6 +87,31 @@
     return body;
   }
 
+  async function logout() {
+    const current = session;
+    saveSession(null);
+    try {
+      if (current?.access_token && cfg.url && cfg.anonKey) {
+        const mod = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm');
+        const client = mod.createClient(cfg.url, cfg.anonKey, {
+          auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
+        });
+        if (current.refresh_token) {
+          const { error } = await client.auth.setSession({
+            access_token: current.access_token,
+            refresh_token: current.refresh_token
+          });
+          if (error) throw error;
+        }
+        await client.auth.signOut({ scope: 'local' });
+      }
+    } catch (e) {
+      console.warn('Server-side sign-out failed; local session was cleared.', e);
+    }
+    authUi();
+    await renderTrades();
+  }
+
   function injectSimulationStyles() {
     if ($('tradeSimulationStyles')) return;
     const style = document.createElement('style');
@@ -99,7 +139,7 @@
     if (!$('tradeAuthBar')) {
       const bar = document.createElement('div'); bar.id = 'tradeAuthBar'; bar.style.cssText = 'display:flex;justify-content:space-between;align-items:center;gap:8px;margin:6px 0 10px;';
       bar.innerHTML = '<span id="tradeAuthStatus" class="note"></span><div class="actions" style="margin-top:0"><button id="tradeLoginBtn" class="btn" type="button">Entrar</button><button id="tradeLogoutBtn" class="btn" type="button" style="display:none">Sair</button></div>';
-      card.querySelector('.section-head')?.after(bar); $('tradeLoginBtn').onclick = showAuth; $('tradeLogoutBtn').onclick = () => { saveSession(null); authUi(); renderTrades(); };
+      card.querySelector('.section-head')?.after(bar); $('tradeLoginBtn').onclick = showAuth; $('tradeLogoutBtn').onclick = logout;
     }
     const logged = !!session?.access_token;
     $('tradeAuthStatus').textContent = logged ? `Usuário: ${session.user?.email || 'autenticado'}` : 'Faça login para gravar e consultar seus trades.';
