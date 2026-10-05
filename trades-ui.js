@@ -543,16 +543,12 @@
         save.textContent = 'Salvando…';
         msg.textContent = '';
         try {
-          const assurance = await recoveryClient.auth.mfa.getAuthenticatorAssuranceLevel();
-          if (assurance.error) throw assurance.error;
-          if (assurance.currentLevel !== 'aal2') {
-            const factorsResult = await recoveryClient.auth.mfa.listFactors();
-            if (factorsResult.error) throw factorsResult.error;
-            const factor = (factorsResult.data?.totp || []).find(f => f.status === 'verified');
-            if (assurance.nextLevel !== 'aal2' || !factor) throw new Error('Esta conta exige MFA para alterar a senha. Faça a verificação em duas etapas e tente novamente.');
-            const verified = await challengeMfa(factor.id, recoveryClient);
-            if (!verified) { msg.textContent = 'A verificação MFA foi cancelada.'; return; }
-          }
+          const factorsResult = await recoveryClient.auth.mfa.listFactors();
+          if (factorsResult.error) throw factorsResult.error;
+          const factor = (factorsResult.data?.totp || []).find(f => f.status === 'verified');
+          if (!factor) throw new Error('Esta conta exige MFA para alterar a senha, mas nenhum fator TOTP verificado foi encontrado.');
+          const verified = await challengeMfa(factor.id, recoveryClient);
+          if (!verified) { msg.textContent = 'A verificação MFA foi cancelada.'; return; }
           const { error } = await recoveryClient.auth.updateUser({ password });
           if (error) throw error;
           await recoveryClient.auth.signOut().catch(() => {});
