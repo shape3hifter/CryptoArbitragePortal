@@ -183,7 +183,7 @@
           const result = await client.auth.mfa.verify({ factorId, challengeId, code });
           if (result.error) throw result.error;
           if (clientOverride) {
-            const sessionResult = await client.getSession();
+            const sessionResult = await client.auth.getSession();
             if (sessionResult.error) throw sessionResult.error;
             if (sessionResult.data.session) recoverySession = sessionResult.data.session;
           } else {
