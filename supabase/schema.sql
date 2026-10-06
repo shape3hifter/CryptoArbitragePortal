@@ -297,28 +297,8 @@ create policy trades_mfa_assurance
   as restrictive
   for all
   to authenticated
-  using (
-    array[(select auth.jwt()->>'aal')] <@ (
-      select case
-        when count(id) > 0 then array['aal2']
-        else array['aal1','aal2']
-      end
-      from auth.mfa_factors
-      where (select auth.uid()) = user_id
-        and status = 'verified'
-    )
-  )
-  with check (
-    array[(select auth.jwt()->>'aal')] <@ (
-      select case
-        when count(id) > 0 then array['aal2']
-        else array['aal1','aal2']
-      end
-      from auth.mfa_factors
-      where (select auth.uid()) = user_id
-        and status = 'verified'
-    )
-  );
+  using ((auth.jwt() ->> 'aal') = 'aal2')
+  with check ((auth.jwt() ->> 'aal') = 'aal2');
 
 
 drop policy if exists trade_legs_mfa_assurance on public.trade_legs;
@@ -327,28 +307,8 @@ create policy trade_legs_mfa_assurance
   as restrictive
   for all
   to authenticated
-  using (
-    array[(select auth.jwt()->>'aal')] <@ (
-      select case
-        when count(id) > 0 then array['aal2']
-        else array['aal1','aal2']
-      end
-      from auth.mfa_factors
-      where (select auth.uid()) = user_id
-        and status = 'verified'
-    )
-  )
-  with check (
-    array[(select auth.jwt()->>'aal')] <@ (
-      select case
-        when count(id) > 0 then array['aal2']
-        else array['aal1','aal2']
-      end
-      from auth.mfa_factors
-      where (select auth.uid()) = user_id
-        and status = 'verified'
-    )
-  );
+  using ((auth.jwt() ->> 'aal') = 'aal2')
+  with check ((auth.jwt() ->> 'aal') = 'aal2');
 
 
 drop policy if exists trade_alerts_mfa_assurance on public.trade_alerts;
@@ -357,28 +317,8 @@ create policy trade_alerts_mfa_assurance
   as restrictive
   for all
   to authenticated
-  using (
-    array[(select auth.jwt()->>'aal')] <@ (
-      select case
-        when count(id) > 0 then array['aal2']
-        else array['aal1','aal2']
-      end
-      from auth.mfa_factors
-      where (select auth.uid()) = user_id
-        and status = 'verified'
-    )
-  )
-  with check (
-    array[(select auth.jwt()->>'aal')] <@ (
-      select case
-        when count(id) > 0 then array['aal2']
-        else array['aal1','aal2']
-      end
-      from auth.mfa_factors
-      where (select auth.uid()) = user_id
-        and status = 'verified'
-    )
-  );
+  using ((auth.jwt() ->> 'aal') = 'aal2')
+  with check ((auth.jwt() ->> 'aal') = 'aal2');
 
 
 drop policy if exists trade_alert_events_mfa_assurance on public.trade_alert_events;
@@ -387,28 +327,8 @@ create policy trade_alert_events_mfa_assurance
   as restrictive
   for all
   to authenticated
-  using (
-    array[(select auth.jwt()->>'aal')] <@ (
-      select case
-        when count(id) > 0 then array['aal2']
-        else array['aal1','aal2']
-      end
-      from auth.mfa_factors
-      where (select auth.uid()) = user_id
-        and status = 'verified'
-    )
-  )
-  with check (
-    array[(select auth.jwt()->>'aal')] <@ (
-      select case
-        when count(id) > 0 then array['aal2']
-        else array['aal1','aal2']
-      end
-      from auth.mfa_factors
-      where (select auth.uid()) = user_id
-        and status = 'verified'
-    )
-  );
+  using ((auth.jwt() ->> 'aal') = 'aal2')
+  with check ((auth.jwt() ->> 'aal') = 'aal2');
 
 
 drop policy if exists hourly_arbitrage_observations_mfa_assurance on public.hourly_arbitrage_observations;
@@ -417,28 +337,8 @@ create policy hourly_arbitrage_observations_mfa_assurance
   as restrictive
   for all
   to authenticated
-  using (
-    array[(select auth.jwt()->>'aal')] <@ (
-      select case
-        when count(id) > 0 then array['aal2']
-        else array['aal1','aal2']
-      end
-      from auth.mfa_factors
-      where (select auth.uid()) = user_id
-        and status = 'verified'
-    )
-  )
-  with check (
-    array[(select auth.jwt()->>'aal')] <@ (
-      select case
-        when count(id) > 0 then array['aal2']
-        else array['aal1','aal2']
-      end
-      from auth.mfa_factors
-      where (select auth.uid()) = user_id
-        and status = 'verified'
-    )
-  );
+  using ((auth.jwt() ->> 'aal') = 'aal2')
+  with check ((auth.jwt() ->> 'aal') = 'aal2');
 
 
 drop policy if exists hourly_arbitrage_state_mfa_assurance on public.hourly_arbitrage_state;
@@ -447,28 +347,8 @@ create policy hourly_arbitrage_state_mfa_assurance
   as restrictive
   for all
   to authenticated
-  using (
-    array[(select auth.jwt()->>'aal')] <@ (
-      select case
-        when count(id) > 0 then array['aal2']
-        else array['aal1','aal2']
-      end
-      from auth.mfa_factors
-      where (select auth.uid()) = user_id
-        and status = 'verified'
-    )
-  )
-  with check (
-    array[(select auth.jwt()->>'aal')] <@ (
-      select case
-        when count(id) > 0 then array['aal2']
-        else array['aal1','aal2']
-      end
-      from auth.mfa_factors
-      where (select auth.uid()) = user_id
-        and status = 'verified'
-    )
-  );
+  using ((auth.jwt() ->> 'aal') = 'aal2')
+  with check ((auth.jwt() ->> 'aal') = 'aal2');
 
 
 drop policy if exists hourly_trade_state_mfa_assurance on public.hourly_trade_state;
@@ -477,28 +357,8 @@ create policy hourly_trade_state_mfa_assurance
   as restrictive
   for all
   to authenticated
-  using (
-    array[(select auth.jwt()->>'aal')] <@ (
-      select case
-        when count(id) > 0 then array['aal2']
-        else array['aal1','aal2']
-      end
-      from auth.mfa_factors
-      where (select auth.uid()) = user_id
-        and status = 'verified'
-    )
-  )
-  with check (
-    array[(select auth.jwt()->>'aal')] <@ (
-      select case
-        when count(id) > 0 then array['aal2']
-        else array['aal1','aal2']
-      end
-      from auth.mfa_factors
-      where (select auth.uid()) = user_id
-        and status = 'verified'
-    )
-  );
+  using ((auth.jwt() ->> 'aal') = 'aal2')
+  with check ((auth.jwt() ->> 'aal') = 'aal2');
 
 
 drop policy if exists hourly_arbitrage_message_preview_mfa_assurance on public.hourly_arbitrage_message_preview;
@@ -507,26 +367,6 @@ create policy hourly_arbitrage_message_preview_mfa_assurance
   as restrictive
   for all
   to authenticated
-  using (
-    array[(select auth.jwt()->>'aal')] <@ (
-      select case
-        when count(id) > 0 then array['aal2']
-        else array['aal1','aal2']
-      end
-      from auth.mfa_factors
-      where (select auth.uid()) = user_id
-        and status = 'verified'
-    )
-  )
-  with check (
-    array[(select auth.jwt()->>'aal')] <@ (
-      select case
-        when count(id) > 0 then array['aal2']
-        else array['aal1','aal2']
-      end
-      from auth.mfa_factors
-      where (select auth.uid()) = user_id
-        and status = 'verified'
-    )
-  );
+  using ((auth.jwt() ->> 'aal') = 'aal2')
+  with check ((auth.jwt() ->> 'aal') = 'aal2');
 
