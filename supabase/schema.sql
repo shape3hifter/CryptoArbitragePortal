@@ -161,6 +161,7 @@ create table if not exists public.hourly_arbitrage_message_preview (
   zscore numeric,
   profit_pct numeric,
   threshold numeric,
+  email_subject text,
   message text not null,
   created_at timestamptz not null default now(),
   email_status text not null default 'not_sent' check (email_status in ('not_sent','pending','sent','failed')),
