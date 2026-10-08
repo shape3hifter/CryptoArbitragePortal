@@ -60,7 +60,7 @@ TRADES_MARKUP=r'''
 })();
 </script>
 <script src="supabase/config.js"></script>
-<script src="trades-ui.js?v=20261004-7"></script>
+<script src="trades-ui.js?v=20261008-1"></script>
 <script src="runtime-fixes.js?v=20261004-7"></script>
 '''
 def build():
