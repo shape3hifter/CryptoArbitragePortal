@@ -8,7 +8,10 @@
   };
   const LIVE_FN = '/functions/v1/live-prices';
   const CG_IDS = { ADA: 'cardano', NIGHT: 'midnight-3', SNEK: 'snek', SOL: 'solana', BONK: 'bonk', WIF: 'dogwifcoin' };
-  const SESSION_KEY = 'cryptoArbSupabaseSessionV2';
+  // Session persists in this browser profile so closing/reopening the browser
+  // does not require a new login. Logout still clears the persisted session.
+  const SESSION_KEY = 'cryptoArbSupabaseSessionV3';
+  const TAB_SESSION_KEY = 'cryptoArbSupabaseSessionV2';
   const LEGACY_SESSION_KEY = 'cryptoArbSupabaseSession';
   let session = loadSession();
   let simulationState = null;
@@ -20,23 +23,38 @@
 
   function loadSession() {
     try {
-      const current = sessionStorage.getItem(SESSION_KEY);
-      if (current) return JSON.parse(current);
+      const persistent = localStorage.getItem(SESSION_KEY);
+      if (persistent) return JSON.parse(persistent);
+
+      // Migrate the session from the previous tab-only storage used by older builds.
+      const tabOnly = sessionStorage.getItem(TAB_SESSION_KEY);
+      if (tabOnly) {
+        localStorage.setItem(SESSION_KEY, tabOnly);
+        sessionStorage.removeItem(TAB_SESSION_KEY);
+        return JSON.parse(tabOnly);
+      }
+
+      // Migrate the older legacy session key if it still exists.
       const legacy = localStorage.getItem(LEGACY_SESSION_KEY);
       if (!legacy) return null;
-      sessionStorage.setItem(SESSION_KEY, legacy);
+      localStorage.setItem(SESSION_KEY, legacy);
       localStorage.removeItem(LEGACY_SESSION_KEY);
       return JSON.parse(legacy);
     } catch {
-      try { sessionStorage.removeItem(SESSION_KEY); localStorage.removeItem(LEGACY_SESSION_KEY); } catch {}
+      try {
+        localStorage.removeItem(SESSION_KEY);
+        sessionStorage.removeItem(TAB_SESSION_KEY);
+        localStorage.removeItem(LEGACY_SESSION_KEY);
+      } catch {}
       return null;
     }
   }
   function saveSession(value) {
     session = value;
     try {
-      if (value) sessionStorage.setItem(SESSION_KEY, JSON.stringify(value));
-      else sessionStorage.removeItem(SESSION_KEY);
+      if (value) localStorage.setItem(SESSION_KEY, JSON.stringify(value));
+      else localStorage.removeItem(SESSION_KEY);
+      sessionStorage.removeItem(TAB_SESSION_KEY);
       localStorage.removeItem(LEGACY_SESSION_KEY);
     } catch {}
   }
