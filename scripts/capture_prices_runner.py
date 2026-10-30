@@ -56,7 +56,8 @@ def read_rows() -> list[dict[str, str]]:
 
 
 def expected_symbols(config: dict) -> set[str]:
-    return {str(asset["symbol"]).upper() for asset in config.get("assets", [])}
+    assets, _source = capture.load_configured_assets(config)
+    return {str(asset["symbol"]).upper() for asset in assets}
 
 
 def date_status(rows: list[dict[str, str]], expected: set[str], day: date, ref_time: str) -> tuple[bool, set[str]]:
@@ -162,7 +163,17 @@ def main() -> int:
         run_one(day)
         rows = read_rows()
 
-    print(f"Captura concluída. Último snapshot elegível: {latest.isoformat()} {ref_time} BRT.")
+    complete, missing = date_status(rows, expected, latest, ref_time)
+    if complete:
+        print(f"Captura concluída. Snapshot completo: {latest.isoformat()} {ref_time} BRT.")
+    else:
+        missing_text = ", ".join(sorted(missing))
+        print(
+            f"WARNING: snapshot parcial em {latest.isoformat()} {ref_time} BRT. "
+            f"Ativos ainda sem observação: {missing_text}. "
+            "O runner tentará novamente na próxima execução.",
+            file=sys.stderr,
+        )
     return 0
 
 

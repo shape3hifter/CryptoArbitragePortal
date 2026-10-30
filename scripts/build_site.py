@@ -7,6 +7,7 @@ DIST=ROOT/'dist'
 SOURCE_INDEX=ROOT/'index.html'
 TRADES_UI_JS=ROOT/'trades-ui.js'
 RUNTIME_FIXES_JS=ROOT/'runtime-fixes.js'
+CONFIG_UI_JS=ROOT/'arbitrage-config-ui.js'
 SUPABASE_CONFIG=ROOT/'supabase'/'config.js'
 TRADES_MARKUP=r'''
 <section class="card trades-card" id="tradesPanel">
@@ -56,15 +57,16 @@ TRADES_MARKUP=r'''
  window.updateTradeVisualForm=function(){const a=arb(),s=$('tradeVisualStrategy')?.value||sts(a)[0],asset=ia(s,a),cap=Number($('tradeVisualAnchorAmount')?.value),qty=Number($('tradeVisualQuantity')?.value),out=Number($('tradeVisualExitAmount')?.value);$('tradeVisualInitialAsset').value=asset;$('tradeVisualAnchorLabel').textContent=`Quantidade utilizada (${a.anchor})`;$('tradeVisualQuantityLabel').textContent=`Quantidade recebida (${asset})`;$('tradeVisualExitAmountLabel').textContent=`Quantidade recebida na âncora (${a.anchor})`;$('tradeVisualEntryDerived').innerHTML=`Preço efetivo de entrada: <strong>${cap>0&&qty>0?fmt(cap/qty)+' '+a.anchor+'/'+asset:'—'}</strong>`;$('tradeVisualExitDerived').innerHTML=`Preço efetivo de saída: <strong>${out>0&&qty>0?fmt(out/qty)+' '+a.anchor+'/'+asset:'—'}</strong>`;};
  window.openTradeVisualForm=function(){const a=arb(),s=$('tradeVisualStrategy'),as=$('tradeVisualArbitrage');as.innerHTML=`<option value="${a.id}">${a.name}</option>`;s.innerHTML=sts(a).map(x=>`<option value="${x}">${x}</option>`).join('');const d=new Date(),p=n=>String(n).padStart(2,'0');$('tradeVisualOpenedAt').value=`${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;$('tradeVisualClosedAt').value='';$('tradeVisualAnchorAmount').value='';$('tradeVisualQuantity').value='';$('tradeVisualExitAmount').value='';$('tradeVisualMessage').textContent='';$('tradeVisualResult').classList.add('hidden');window.updateTradeVisualForm();$('tradeVisualModal').classList.remove('hidden');$('tradeVisualModal').setAttribute('aria-hidden','false');};
  window.closeTradeVisualForm=function(){$('tradeVisualModal').classList.add('hidden');$('tradeVisualModal').setAttribute('aria-hidden','true');};
- window.validateTradeVisualForm=function(e){e.preventDefault();const a=arb(),s=$('tradeVisualStrategy').value||sts(a)[0],asset=ia(s,a),opened=$('tradeVisualOpenedAt').value,closed=$('tradeVisualClosedAt').value,cap=Number($('tradeVisualAnchorAmount').value),qty=Number($('tradeVisualQuantity').value),out=Number($('tradeVisualExitAmount').value),m=$('tradeVisualMessage'),r=$('tradeVisualResult');if(!(cap>0)||!(qty>0)){m.textContent=`Preencha a quantidade utilizada em ${a.anchor} e a quantidade recebida em ${asset}.`;return false}if(closed||out>0){if(!closed||!(out>0)){m.textContent='Para fechar, informe a data/hora de saída e a quantidade recebida na âncora.';return false}if(new Date(closed)<new Date(opened)){m.textContent='A saída não pode ser anterior à entrada.';return false}const profit=out-cap,ret=profit/cap,h=(new Date(closed)-new Date(opened))/36e5;r.innerHTML=`<strong>Trade fechado validado</strong><br>${fmt(cap)} ${a.anchor} → ${fmt(qty)} ${asset} → ${fmt(out)} ${a.anchor}<br>Resultado: <strong>${fmt(profit)} ${a.anchor}</strong> (${(ret*100).toLocaleString('pt-BR',{maximumFractionDigits:4)}%) · Duração: ${h.toLocaleString('pt-BR',{maximumFractionDigits:2})} h`;}else{r.innerHTML=`<strong>Trade aberto validado</strong><br>${fmt(cap)} ${a.anchor} → ${fmt(qty)} ${asset}<br>Preço efetivo de entrada: <strong>${fmt(cap/qty)} ${a.anchor}/${asset}</strong>`}r.classList.remove('hidden');m.textContent='Validação concluída. Ainda não gravado no PostgreSQL.';return false;};
+ window.validateTradeVisualForm=function(e){e.preventDefault();const a=arb(),s=$('tradeVisualStrategy').value||sts(a)[0],asset=ia(s,a),opened=$('tradeVisualOpenedAt').value,closed=$('tradeVisualClosedAt').value,cap=Number($('tradeVisualAnchorAmount').value),qty=Number($('tradeVisualQuantity').value),out=Number($('tradeVisualExitAmount').value),m=$('tradeVisualMessage'),r=$('tradeVisualResult');if(!(cap>0)||!(qty>0)){m.textContent=`Preencha a quantidade utilizada em ${a.anchor} e a quantidade recebida em ${asset}.`;return false}if(closed||out>0){if(!closed||!(out>0)){m.textContent='Para fechar, informe a data/hora de saída e a quantidade recebida na âncora.';return false}if(new Date(closed)<new Date(opened)){m.textContent='A saída não pode ser anterior à entrada.';return false}const profit=out-cap,ret=profit/cap,h=(new Date(closed)-new Date(opened))/36e5;r.innerHTML=`<strong>Trade fechado validado</strong><br>${fmt(cap)} ${a.anchor} → ${fmt(qty)} ${asset} → ${fmt(out)} ${a.anchor}<br>Resultado: <strong>${fmt(profit)} ${a.anchor}</strong> (${(ret*100).toLocaleString('pt-BR',{maximumFractionDigits:4})}%) · Duração: ${h.toLocaleString('pt-BR',{maximumFractionDigits:2})} h`;}else{r.innerHTML=`<strong>Trade aberto validado</strong><br>${fmt(cap)} ${a.anchor} → ${fmt(qty)} ${asset}<br>Preço efetivo de entrada: <strong>${fmt(cap/qty)} ${a.anchor}/${asset}</strong>`}r.classList.remove('hidden');m.textContent='Validação concluída. Ainda não gravado no PostgreSQL.';return false;};
 })();
 </script>
 <script src="supabase/config.js"></script>
-<script src="trades-ui.js?v=20261008-1"></script>
+<script src="trades-ui.js?v=20261030-1"></script>
 <script src="runtime-fixes.js?v=20261004-7"></script>
+<script src="arbitrage-config-ui.js?v=20261030-1"></script>
 '''
 def build():
- if not SOURCE_INDEX.exists() or not TRADES_UI_JS.exists() or not RUNTIME_FIXES_JS.exists() or not SUPABASE_CONFIG.exists(): raise SystemExit('Arquivos necessários não encontrados')
+ if not SOURCE_INDEX.exists() or not TRADES_UI_JS.exists() or not RUNTIME_FIXES_JS.exists() or not CONFIG_UI_JS.exists() or not SUPABASE_CONFIG.exists(): raise SystemExit('Arquivos necessários não encontrados')
  if DIST.exists(): shutil.rmtree(DIST)
  DIST.mkdir(parents=True)
  for name in ['index.html','data.csv','capture-log.json','config.json']:
@@ -74,6 +76,7 @@ def build():
   if p.is_file(): shutil.copy2(p,DIST/p.name)
  shutil.copy2(TRADES_UI_JS,DIST/'trades-ui.js')
  shutil.copy2(RUNTIME_FIXES_JS,DIST/'runtime-fixes.js')
+ shutil.copy2(CONFIG_UI_JS,DIST/'arbitrage-config-ui.js')
  (DIST/'supabase').mkdir(); shutil.copy2(SUPABASE_CONFIG,DIST/'supabase'/'config.js')
  html=SOURCE_INDEX.read_text(encoding='utf-8')
  marker='</div>\n\n  <div class="section metrics" id="metrics"></div>'

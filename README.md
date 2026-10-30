@@ -36,3 +36,14 @@ python3 scripts/capture_prices.py
 ## Observação sobre o horário
 
 GitHub Actions schedules podem sofrer atrasos ocasionais. Por isso, o script registra o `executed_at` e o status da captura em `capture-log.json`. O horário de execução do workflow é 00:30 UTC (21:30 em São Paulo), enquanto o `data.csv` mantém a convenção de negócio de 21:00 BRT para a observação diária.
+
+
+## Configurações de arbitragem
+
+O portal mantém as configurações permanentes das estratégias no Supabase, na tabela `arbitrage_configurations`. A tabela `arbitrage_assets` funciona como catálogo central de ativos e inclui os identificadores necessários às fontes de preços.
+
+A tela **Configurações** permite criar, editar e habilitar o monitoramento automático. Novas estratégias começam com o monitoramento desligado. As alterações experimentais na tela **Arbitragens** são mantidas apenas durante a sessão e não modificam os parâmetros permanentes.
+
+O motor horário lê as estratégias habilitadas diretamente do Supabase, incluindo a janela estatística individual. O processo diário de captura também consulta o catálogo central; `config.json` permanece como fallback operacional caso o catálogo não esteja acessível.
+
+As alterações de configuração exigem uma sessão autenticada com MFA (AAL2), conforme as políticas RLS do banco.

@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import re
 import sys
 import time
 from datetime import date, datetime, time as dt_time, timedelta, timezone
@@ -48,6 +49,35 @@ def load_config() -> dict:
 
 def parse_clock(value: str) -> dt_time:
     return datetime.strptime(value, "%H:%M").time()
+
+
+def load_configured_assets(config: dict) -> tuple[list[dict], str]:
+    """Prefer Supabase asset catalog; retain config.json as fallback."""
+    config_js = ROOT / "supabase" / "config.js"
+    try:
+        source = config_js.read_text(encoding="utf-8")
+        url_match = re.search(r"url\s*:\s*[\'\"]([^\'\"]+)[\'\"]", source)
+        key_match = re.search(r"anonKey\s*:\s*[\'\"]([^\'\"]+)[\'\"]", source)
+        if not url_match or not key_match:
+            raise RuntimeError("Supabase public client config not found")
+        query = urlencode({"select": "symbol,name,type,cmc_id,enabled", "enabled": "eq.true", "order": "symbol.asc"})
+        request = Request(
+            f"{url_match.group(1).rstrip('/')}/rest/v1/arbitrage_assets?{query}",
+            headers={"Accept": "application/json", "apikey": key_match.group(1), "Authorization": f"Bearer {key_match.group(1)}", "User-Agent": "crypto-arbitrage-portal-capture/1.0"},
+        )
+        with urlopen(request, timeout=25) as response:
+            payload = json.load(response, parse_float=Decimal)
+        assets = [{"symbol": str(item["symbol"]).upper(), "name": item.get("name") or str(item["symbol"]).upper(), "type": str(item.get("type", "CRYPTO")).upper(), "cmc_id": item.get("cmc_id")} for item in payload if isinstance(item, dict) and item.get("symbol") and str(item.get("enabled", True)).lower() != "false" and str(item["symbol"]).upper() != "USD"]
+        if not assets:
+            raise RuntimeError("Supabase asset catalog is empty")
+        return assets, "supabase"
+    except Exception as exc:
+        fallback = [a for a in config.get("assets", []) if str(a.get("symbol", "")).upper() != "USD"]
+        if not fallback:
+            raise RuntimeError(f"Unable to load Supabase assets and config.json fallback is empty: {exc}")
+        print(f"WARNING: Supabase asset catalog unavailable; using config.json fallback: {exc}", file=sys.stderr)
+        return fallback, "config.json"
+
 
 
 def http_json(url: str, *, retries: int = 4, timeout: int = 25):
@@ -160,27 +190,39 @@ def main() -> int:
     reference_local = datetime.combine(reference_date, ref_time, tzinfo=tz)
     target_utc = reference_local.astimezone(timezone.utc)
 
-    assets = config.get("assets", [])
+    assets, asset_catalog_source = load_configured_assets(config)
     if not assets:
-        raise RuntimeError("config.json não possui assets cadastrados.")
+        raise RuntimeError("Catálogo central não possui ativos habilitados.")
 
     prices: dict[str, str] = {}
     sources: dict[str, str] = {}
     timestamps: dict[str, str] = {}
+    asset_errors: list[dict[str, str]] = []
     for asset in assets:
         symbol = str(asset["symbol"]).upper()
         kind = str(asset.get("type", "CRYPTO")).upper()
-        if kind == "FIAT":
-            rate, rate_date = fetch_fiat_rate(symbol, reference_date)
-            prices[symbol] = decimal_text(rate)
-            sources[symbol] = "frankfurter"
-            timestamps[symbol] = rate_date.isoformat()
-        else:
-            price, candle_open = fetch_crypto_open(asset, target_utc)
-            prices[symbol] = decimal_text(price)
-            sources[symbol] = "coinmarketcap_public_historical_web_data"
-            timestamps[symbol] = candle_open.isoformat()
-        time.sleep(0.2)
+        try:
+            if kind == "FIAT":
+                rate, rate_date = fetch_fiat_rate(symbol, reference_date)
+                prices[symbol] = decimal_text(rate)
+                sources[symbol] = "frankfurter"
+                timestamps[symbol] = rate_date.isoformat()
+            else:
+                if not asset.get("cmc_id"):
+                    raise RuntimeError("CoinMarketCap ID não cadastrado")
+                price, candle_open = fetch_crypto_open(asset, target_utc)
+                prices[symbol] = decimal_text(price)
+                sources[symbol] = "coinmarketcap_public_historical_web_data"
+                timestamps[symbol] = candle_open.isoformat()
+        except Exception as exc:
+            asset_errors.append({"symbol": symbol, "error": str(exc)})
+            print(f"WARNING: captura de {symbol} falhou: {exc}", file=sys.stderr)
+        finally:
+            time.sleep(0.2)
+
+    if not prices:
+        details = "; ".join(f"{item['symbol']}: {item['error']}" for item in asset_errors)
+        raise RuntimeError(f"Nenhum ativo pôde ser capturado. {details}")
 
     rows = read_rows()
     symbols = set(prices)
@@ -200,12 +242,14 @@ def main() -> int:
         "reference_utc": target_utc.isoformat(),
         "capture_after_time": after_time_str,
         "executed_at": now_local.isoformat(),
-        "status": "manual_test" if manual else "on_time",
+        "status": ("partial_" if asset_errors else "") + ("manual_test" if manual else "on_time"),
         "price_method": "hourly_open_for_crypto; latest_published_daily_fx_for_fiat",
+        "asset_catalog_source": asset_catalog_source,
         "assets": [{"symbol": str(a["symbol"]).upper(), "type": str(a.get("type", "CRYPTO")).upper(), "cmc_id": a.get("cmc_id")} for a in assets],
         "prices": prices,
         "sources": sources,
         "source_timestamps": timestamps,
+        "asset_errors": asset_errors,
     }
     LOG_PATH.write_text(json.dumps(record, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     print(json.dumps(record, ensure_ascii=False))

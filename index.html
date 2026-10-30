@@ -66,6 +66,7 @@ main{max-width:1180px;margin:0 auto;padding:28px 20px 60px}.top{display:flex;jus
         <div class="field"><label for="newAssetName">Nome</label><input id="newAssetName" placeholder="Ex.: Bonk"></div>
         <div class="field"><label for="newAssetType">Tipo</label><select id="newAssetType"><option value="CRYPTO">Crypto</option><option value="FIAT">Fiat</option></select></div>
         <div class="field"><label for="newAssetCmcId">CoinMarketCap ID</label><input id="newAssetCmcId" inputmode="numeric" placeholder="Ex.: 23095"></div>
+        <div class="field"><label for="newAssetCoinGeckoId">CoinGecko ID</label><input id="newAssetCoinGeckoId" placeholder="Ex.: bitcoin"></div>
         <div class="wide actions" style="margin-top:0">
           <button id="addAssetBtn" class="btn primary" type="button">Adicionar ativo</button>
           <button id="clearAssetFormBtn" class="btn" type="button">Limpar</button>
@@ -157,17 +158,23 @@ const CHART_HISTORY_DAYS=180;
 const CMC_LIVE_BASE='https://pro-api.coinmarketcap.com/public-api/v1/simple/price';
 const CMC_CONVERT_BASE='https://pro-api.coinmarketcap.com/public-api/v2/tools/price-conversion';
 let settings={fiat:'USD',anchor:'ADA',comps:['NIGHT','SNEK'],lookback:60};
+const temporaryDrafts=new Map();
+let persistentConfigurationsLoaded=false;
 
 const KNOWN_ASSETS={
-  USD:{symbol:'USD',name:'US Dollar',type:'FIAT',cmc_id:null},
-  BRL:{symbol:'BRL',name:'Brazilian Real',type:'FIAT',cmc_id:null},
-  EUR:{symbol:'EUR',name:'Euro',type:'FIAT',cmc_id:null},
-  ADA:{symbol:'ADA',name:'Cardano',type:'CRYPTO',cmc_id:2010},
-  NIGHT:{symbol:'NIGHT',name:'NIGHT',type:'CRYPTO',cmc_id:39064},
-  SNEK:{symbol:'SNEK',name:'Snek',type:'CRYPTO',cmc_id:25264},
-  SOL:{symbol:'SOL',name:'Solana',type:'CRYPTO',cmc_id:5426},
-  BONK:{symbol:'BONK',name:'Bonk',type:'CRYPTO',cmc_id:23095},
-  WIF:{symbol:'WIF',name:'dogwifhat',type:'CRYPTO',cmc_id:28752},
+  USD:{symbol:'USD',name:'US Dollar',type:'FIAT',cmc_id:null,coingecko_id:null},
+  BRL:{symbol:'BRL',name:'Brazilian Real',type:'FIAT',cmc_id:null,coingecko_id:null},
+  EUR:{symbol:'EUR',name:'Euro',type:'FIAT',cmc_id:null,coingecko_id:null},
+  ADA:{symbol:'ADA',name:'Cardano',type:'CRYPTO',cmc_id:2010,coingecko_id:'cardano'},
+  NIGHT:{symbol:'NIGHT',name:'NIGHT',type:'CRYPTO',cmc_id:39064,coingecko_id:'midnight-3'},
+  SNEK:{symbol:'SNEK',name:'Snek',type:'CRYPTO',cmc_id:25264,coingecko_id:'snek'},
+  SOL:{symbol:'SOL',name:'Solana',type:'CRYPTO',cmc_id:5426,coingecko_id:'solana'},
+  BONK:{symbol:'BONK',name:'Bonk',type:'CRYPTO',cmc_id:23095,coingecko_id:'bonk'},
+  WIF:{symbol:'WIF',name:'dogwifhat',type:'CRYPTO',cmc_id:28752,coingecko_id:'dogwifcoin'},
+  BTC:{symbol:'BTC',name:'Bitcoin',type:'CRYPTO',cmc_id:1,coingecko_id:'bitcoin'},
+  ETH:{symbol:'ETH',name:'Ethereum',type:'CRYPTO',cmc_id:1027,coingecko_id:'ethereum'},
+  USDT:{symbol:'USDT',name:'Tether',type:'CRYPTO',cmc_id:825,coingecko_id:'tether'},
+  USDC:{symbol:'USDC',name:'USD Coin',type:'CRYPTO',cmc_id:3408,coingecko_id:'usd-coin'},
 };
 
 function slug(s){return String(s||'').toUpperCase().replace(/[^A-Z0-9]+/g,'-').replace(/^-|-$/g,'').toLowerCase()||'item'}
@@ -188,6 +195,7 @@ function syncKnownAssetMetadata(){
     current.type=known.type;
     if(known.name && (!current.name || current.name===symbol)) current.name=known.name;
     if(known.cmc_id!=null) current.cmc_id=known.cmc_id;
+    if(known.coingecko_id) current.coingecko_id=known.coingecko_id;
     if(current.enabled===undefined) current.enabled=true;
     if(!current.base_quote) current.base_quote='USD';
   }
@@ -223,16 +231,18 @@ function migrateModel(){
   settings.lookback=Number(active.lookback)||60;
 }
 function syncActiveArbitrageFromSettings(){
-  if(!arbitrages.length||!activeArbitrageId)return;
-  const a=arbitrages.find(x=>x.id===activeArbitrageId)||arbitrages[0];
-  a.referenceUnit=settings.fiat||'USD';
-  a.anchor=settings.anchor||'ADA';
-  a.comparativesDefault=[...new Set((settings.comps||[]).map(String).map(x=>x.toUpperCase()).filter(x=>x!==a.anchor))];
-  a.lookback=Number(settings.lookback)||60;
-  a.name=a.name||`${a.anchor} / ${a.comparativesDefault.join(' / ')}`;
-  activeArbitrageId=a.id;
-  if(!assetCatalog[a.anchor]) assetCatalog[a.anchor]=defaultAsset(a.anchor);
-  for(const c of a.comparativesDefault){if(!assetCatalog[c])assetCatalog[c]=defaultAsset(c);}
+  if(!activeArbitrageId)return;
+  const a=activeArbitrage();
+  if(!a)return;
+  const draft={
+    fiat:String(settings.fiat||a.referenceUnit||'USD').toUpperCase(),
+    anchor:String(settings.anchor||a.anchor||'ADA').toUpperCase(),
+    comps:[...new Set((settings.comps||a.comparativesDefault||[]).map(String).map(x=>x.toUpperCase()))],
+    lookback:Number(settings.lookback)||Number(a.lookback)||60
+  };
+  temporaryDrafts.set(a.id,draft);
+  if(!assetCatalog[draft.anchor]) assetCatalog[draft.anchor]=defaultAsset(draft.anchor);
+  for(const c of draft.comps){if(!assetCatalog[c])assetCatalog[c]=defaultAsset(c);}
 }
 function saveModel(){
   localStorage.setItem(MODEL_KEY,JSON.stringify({version:MODEL_VERSION,baseCurrency:'USD',assetCatalog,arbitrages,activeArbitrageId,seededRows}));
@@ -251,6 +261,40 @@ function loadModel(){
 }
 function modelSummary(){return {version:MODEL_VERSION,baseCurrency:'USD',assetCount:Object.keys(assetCatalog).length,arbitrageCount:arbitrages.length,activeArbitrageId,activeArbitrage:arbitrages.find(a=>a.id===activeArbitrageId)||null};}
 window.cryptoArbitrageModelSummary=modelSummary;
+window.cryptoArbitrageGetAssetCatalog=()=>Object.values(assetCatalog).map(a=>({...a}));
+window.cryptoArbitrageSetAssetCatalog=function(remoteAssets){
+  for(const item of remoteAssets||[]){
+    const symbol=String(item.symbol||'').toUpperCase();
+    if(!symbol)continue;
+    const current=assetCatalog[symbol]||defaultAsset(symbol);
+    assetCatalog[symbol]={
+      ...current,...item,symbol,
+      name:item.name||current.name||symbol,
+      type:String(item.type||item.asset_type||current.type||'CRYPTO').toUpperCase(),
+      cmc_id:item.cmc_id??null,
+      coingecko_id:item.coingecko_id??null,
+      price_source:item.price_source||current.price_source||null,
+      enabled:item.enabled!==false,
+      base_quote:item.base_quote||current.base_quote||'USD'
+    };
+  }
+  syncKnownAssetMetadata();
+  saveModel();
+};
+window.cryptoArbitrageClearAnalysisDraft=id=>temporaryDrafts.delete(String(id));
+window.cryptoArbitrageSetConfigurations=function(configs){
+  const previous=activeArbitrageId;
+  if(!persistentConfigurationsLoaded){temporaryDrafts.clear();persistentConfigurationsLoaded=true;}
+  arbitrages=(configs||[]).map(a=>({
+    id:a.id,name:a.name,referenceUnit:a.referenceUnit||'USD',anchor:a.anchor,
+    comparativesDefault:[...(a.comparativesDefault||[])],lookback:Number(a.lookback)||60,
+    auto_monitoring_enabled:!!a.auto_monitoring_enabled,user_id:a.user_id
+  }));
+  if(!arbitrages.some(a=>a.id===previous)) activeArbitrageId=arbitrages[0]?.id||'';
+  if(activeArbitrageId&&!temporaryDrafts.has(activeArbitrageId)) applyActiveArbitrage();
+  renderArbitrageSelector(); populateControls(); render();
+  saveModel();
+};
 const $=id=>document.getElementById(id);
 const uniq=a=>[...new Set(a)];
 function parseCSV(text){const lines=text.trim().split(/\r?\n/); if(!lines.length) return []; const head=lines[0].split(',').map(s=>s.trim()); const idx=Object.fromEntries(head.map((h,i)=>[h,i])); return lines.slice(1).filter(Boolean).map(l=>{const c=l.split(',');return {date:c[idx.date],time:c[idx.time]||'21:00',fiat:c[idx.fiat]||'USD',symbol:c[idx.symbol]?.toUpperCase(),price:Number(c[idx.price])}}).filter(r=>r.date&&r.symbol&&Number.isFinite(r.price));}
@@ -338,18 +382,21 @@ function mergeRemoteWithSeed(remote){
   return [...map.values()].sort((a,b)=>(a.date+' '+a.time).localeCompare(b.date+' '+b.time)||a.symbol.localeCompare(b.symbol));
 }
 function ensureSettings(){const available=cryptoAssets(); if(!available.includes(settings.anchor))settings.anchor=available[0]||'ADA'; settings.comps=settings.comps.filter(x=>x!==settings.anchor&&available.includes(x)); if(settings.comps.length<2) settings.comps=available.filter(x=>x!==settings.anchor).slice(0,2); syncActiveArbitrageFromSettings();}
-function saveLocal(){syncActiveArbitrageFromSettings(); localStorage.setItem(DATA_KEY,JSON.stringify(rows));localStorage.setItem(SETTINGS_KEY,JSON.stringify(settings));saveModel()}
-function loadLocal(){try{const d=JSON.parse(localStorage.getItem(DATA_KEY)||'null');if(Array.isArray(d)&&d.length)rows=d;const s=JSON.parse(localStorage.getItem(SETTINGS_KEY)||'null');if(s)settings={...settings,...s}}catch(e){} loadModel();}
+function saveLocal(){syncActiveArbitrageFromSettings(); localStorage.setItem(DATA_KEY,JSON.stringify(rows));saveModel()}
+function loadLocal(){try{const d=JSON.parse(localStorage.getItem(DATA_KEY)||'null');if(Array.isArray(d)&&d.length)rows=d}catch(e){} loadModel();}
 function activeArbitrage(){return arbitrages.find(a=>a.id===activeArbitrageId)||arbitrages[0]||null}
 function ensureActiveArbitrage(){
   if(!Array.isArray(arbitrages) || !arbitrages.length) migrateModel();
   if(!activeArbitrageId || !arbitrages.some(a=>a.id===activeArbitrageId)) activeArbitrageId=arbitrages[0]?.id||null;
   const a=activeArbitrage();
   if(a){
-    settings.fiat=a.referenceUnit||settings.fiat||'USD';
-    settings.anchor=a.anchor||settings.anchor||'ADA';
-    settings.comps=[...(a.comparativesDefault||[])];
-    settings.lookback=Number(a.lookback)||60;
+    const draft=temporaryDrafts.get(a.id);
+    settings=draft?{...draft,comps:[...draft.comps]}:{
+      fiat:a.referenceUnit||'USD',
+      anchor:a.anchor||'ADA',
+      comps:[...(a.comparativesDefault||[])],
+      lookback:Number(a.lookback)||60
+    };
   }
 }
 function renderArbitrageSelector(){
@@ -366,10 +413,13 @@ function renderArbitrageSelector(){
 }
 function applyActiveArbitrage(){
   const active=activeArbitrage(); if(!active)return;
-  settings.fiat=active.referenceUnit||'USD';
-  settings.anchor=active.anchor||'ADA';
-  settings.comps=[...active.comparativesDefault];
-  settings.lookback=Number(active.lookback)||60;
+  const draft=temporaryDrafts.get(active.id);
+  settings=draft?{...draft,comps:[...draft.comps]}:{
+    fiat:active.referenceUnit||'USD',
+    anchor:active.anchor||'ADA',
+    comps:[...(active.comparativesDefault||[])],
+    lookback:Number(active.lookback)||60
+  };
   temporarySnapshot=null;
   invalidateAnalysisCache();
   updateLiveStatus();
@@ -377,6 +427,36 @@ function applyActiveArbitrage(){
 function formatCount(n){return Number(n||0).toLocaleString('pt-BR')}
 function assetHistoryRows(symbol){return rows.filter(r=>String(r.symbol||'').toUpperCase()===symbol && r.fiat==='USD')}
 function assetHistoryDays(symbol){return new Set(assetHistoryRows(symbol).map(r=>r.date)).size}
+function checkArbitrageReadiness(cfg){
+  const anchor=String(cfg.anchor||'').toUpperCase();
+  const comps=[...(cfg.comparativesDefault||[])].map(x=>String(x).toUpperCase());
+  const lookback=Number(cfg.lookback)||60;
+  const ref=String(cfg.referenceUnit||'USD').toUpperCase();
+  const valid=rows.filter(r=>String(r.fiat||'USD').toUpperCase()==='USD'&&Number.isFinite(Number(r.price))&&Number(r.price)>0&&r.date&&r.symbol);
+  const datesFor=s=>new Set(valid.filter(r=>String(r.symbol).toUpperCase()===s).map(r=>r.date+'T'+(r.time||'21:00')));
+  const anchorDates=datesFor(anchor);
+  const reasons=[];
+  let minSamples=Infinity;
+  for(const comp of comps){
+    const compDates=datesFor(comp);
+    const count=[...anchorDates].filter(d=>compDates.has(d)).length;
+    minSamples=Math.min(minSamples,count);
+    if(count<lookback) reasons.push(`${comp}/${anchor}: ${count} de ${lookback} observações alinhadas`);
+  }
+  const analysisReady=comps.length>=2&&Number.isFinite(minSamples)&&minSamples>=lookback;
+  let conversionReady=true;
+  if(ref!=='USD'){
+    const refDates=datesFor(ref);
+    conversionReady=[...anchorDates].filter(d=>refDates.has(d)).length>=lookback;
+    if(!conversionReady) reasons.push(`Histórico de conversão insuficiente para ${ref}`);
+  }
+  const allAssets=[anchor,...comps].map(symbol=>assetCatalog[symbol]||defaultAsset(symbol));
+  const missingQuote=allAssets.filter(a=>a.type==='CRYPTO'&&(!a.cmc_id||!a.coingecko_id||a.enabled===false)).map(a=>a.symbol);
+  const monitorReady=analysisReady&&missingQuote.length===0;
+  if(missingQuote.length) reasons.push(`Fonte de cotação automática não configurada: ${missingQuote.join(', ')}`);
+  return {analysisReady,conversionReady,monitorReady,commonSamples:Number.isFinite(minSamples)?minSamples:0,reasons};
+}
+window.cryptoArbitrageCheckReadiness=checkArbitrageReadiness;
 function assetLatestDate(symbol){const rs=assetHistoryRows(symbol).sort((a,b)=>(a.date+' '+a.time).localeCompare(b.date+' '+b.time));return rs.at(-1)?.date||null}
 function assetIsUsed(symbol){return arbitrages.some(a=>a.anchor===symbol || (a.comparativesDefault||[]).includes(symbol))}
 function renderAssetsView(){
@@ -410,35 +490,36 @@ function startEditAsset(symbol){
   editingAssetSymbol=symbol;
   $('newAssetSymbol').value=symbol; $('newAssetSymbol').disabled=true;
   $('newAssetName').value=a.name||symbol; $('newAssetType').value=a.type||'CRYPTO'; $('newAssetType').disabled=true;
-  $('newAssetCmcId').value=a.cmc_id||''; $('addAssetBtn').textContent='Salvar alterações';
+  $('newAssetCmcId').value=a.cmc_id||''; $('newAssetCoinGeckoId').value=a.coingecko_id||'';
+  $('addAssetBtn').textContent='Salvar alterações';
   $('clearAssetFormBtn').textContent='Cancelar edição';
-  $('newAssetCmcId').disabled=a.type==='FIAT';
+  $('newAssetCmcId').disabled=a.type==='FIAT'; $('newAssetCoinGeckoId').disabled=a.type==='FIAT';
   document.getElementById('newAssetSymbol').scrollIntoView({behavior:'smooth',block:'center'});
 }
 function resetAssetForm(){
   editingAssetSymbol=null; $('newAssetSymbol').disabled=false; $('newAssetType').disabled=false; $('addAssetBtn').textContent='Adicionar ativo'; $('clearAssetFormBtn').textContent='Limpar';
 }
-function clearAssetForm(){$('newAssetSymbol').value='';$('newAssetName').value='';$('newAssetType').value='CRYPTO';$('newAssetCmcId').value='';resetAssetForm();$('newAssetType').dispatchEvent(new Event('change'));}
+function clearAssetForm(){$('newAssetSymbol').value='';$('newAssetName').value='';$('newAssetType').value='CRYPTO';$('newAssetCmcId').value='';$('newAssetCoinGeckoId').value='';resetAssetForm();$('newAssetType').dispatchEvent(new Event('change'));}
 function addAsset(){
-  const symbol=$('newAssetSymbol').value.trim().toUpperCase(); const name=$('newAssetName').value.trim()||symbol; const type=$('newAssetType').value; const id=Number($('newAssetCmcId').value);
+  const symbol=$('newAssetSymbol').value.trim().toUpperCase(); const name=$('newAssetName').value.trim()||symbol; const type=$('newAssetType').value; const id=Number($('newAssetCmcId').value); const cg=$('newAssetCoinGeckoId').value.trim().toLowerCase();
   if(editingAssetSymbol){
     const a=assetCatalog[editingAssetSymbol]; if(!a){return;}
     if(!name){alert('Informe um nome.');return;}
     if(type==='CRYPTO' && (!Number.isInteger(id)||id<=0)){alert('Para Crypto, informe o CoinMarketCap ID.');return;}
-    a.name=name; if(type==='CRYPTO') a.cmc_id=id; saveModel(); resetAssetForm(); clearAssetForm(); renderAssetsView(); populateControls(); render();
+    a.name=name; if(type==='CRYPTO'){a.cmc_id=id;a.coingecko_id=cg||null;} saveModel(); document.dispatchEvent(new CustomEvent('crypto-arb-assets-changed')); resetAssetForm(); clearAssetForm(); renderAssetsView(); populateControls(); render();
     alert(`${editingAssetSymbol} atualizado.`); return;
   }
-  if(!/^[A-Z0-9.\-_]{2,15}$/.test(symbol)){alert('Informe um símbolo válido.');return;}
+  if(!/^[A-Z0-9.\\-_]{2,15}$/.test(symbol)){alert('Informe um símbolo válido.');return;}
   if(assetCatalog[symbol] && assetCatalog[symbol].enabled!==false){alert(`${symbol} já está cadastrado. Use Editar para alterar seus dados.`);return;}
   if(type==='CRYPTO' && (!Number.isInteger(id)||id<=0)){alert('Para Crypto, informe o CoinMarketCap ID.');return;}
-  assetCatalog[symbol]={symbol,name,type,cmc_id:type==='CRYPTO'?id:null,enabled:true,base_quote:'USD'};
-  saveModel();renderAssetsView();populateControls();render();clearAssetForm();
+  assetCatalog[symbol]={symbol,name,type,cmc_id:type==='CRYPTO'?id:null,coingecko_id:type==='CRYPTO'?(cg||null):null,enabled:true,base_quote:'USD'};
+  saveModel();document.dispatchEvent(new CustomEvent('crypto-arb-assets-changed'));renderAssetsView();populateControls();render();clearAssetForm();
   if(type==='CRYPTO'){
     const ok=confirm(`${symbol} foi cadastrado. Quer carregar agora o histórico de até ${HISTORY_TARGET_DAYS} dias?`);
     if(ok) loadAssetHistory(symbol);
   }
 }
-function toggleAsset(symbol){const a=assetCatalog[symbol];if(!a)return;if(a.enabled!==false && assetIsUsed(symbol)){alert(`${symbol} está sendo usado por uma arbitragem e não pode ser inativado nesta etapa.`);return}a.enabled=a.enabled===false;saveModel();populateControls();renderAssetsView();render();}
+function toggleAsset(symbol){const a=assetCatalog[symbol];if(!a)return;if(a.enabled!==false && assetIsUsed(symbol)){alert(`${symbol} está sendo usado por uma arbitragem e não pode ser inativado nesta etapa.`);return}a.enabled=a.enabled===false;saveModel();document.dispatchEvent(new CustomEvent('crypto-arb-assets-changed'));populateControls();renderAssetsView();render();}
 function historyProxyUrl(symbol){const id=assetCatalog[symbol]?.cmc_id;if(!id)throw new Error(`CMC ID não cadastrado para ${symbol}`);const end=Math.floor(Date.now()/1000);const start=end-HISTORY_TARGET_DAYS*86400;const url=`https://api.coinmarketcap.com/data-api/v3.1/cryptocurrency/historical?id=${id}&convertId=2781&timeStart=${start}&timeEnd=${end}&interval=1d`;return 'https://corsproxy.io/?url='+encodeURIComponent(url);}
 function parseHistoricalResponse(payload){
   const quotes=payload?.data?.quotes||[]; if(!Array.isArray(quotes))return [];
@@ -539,39 +620,14 @@ async function loadAssetHistory(symbol){
   finally{renderAssetsView();}
 }
 async function handleAssetAction(action,symbol){if(action==='edit')startEditAsset(symbol);else if(action==='toggle')toggleAsset(symbol);else if(action==='load')await loadAssetHistory(symbol);else if(action==='load-fiat')await loadFiatHistory(symbol);}
-function populateControls(){ensureSettings(); renderArbitrageSelector(); const fiat=$('fiat'); const lookback=$('lookback'); const asof=$('asof'); const anchor=$('anchor'); if(fiat)fiat.value=settings.fiat; if(lookback)lookback.value=String(settings.lookback); if(asof){const iso=latestOfficialSnapshotISO(); asof.dataset.iso=iso; asof.textContent=iso?formatSnapshotBR(iso):'—';} if(anchor){anchor.innerHTML=cryptoAssets().map(a=>`<option>${a}</option>`).join(''); anchor.value=settings.anchor;} renderChecks();}
-function renderChecks(){const arr=cryptoAssets().filter(a=>a!==settings.anchor); $('checks').innerHTML=arr.map(a=>`<label><input type="checkbox" data-comp="${a}" ${settings.comps.includes(a)?'checked':''}> ${a}</label>`).join(''); $('checks').querySelectorAll('input').forEach(i=>i.addEventListener('change',()=>{let next=[...$('checks').querySelectorAll('input:checked')].map(x=>x.dataset.comp); if(next.length<2){i.checked=true;return} if(next.length>5){i.checked=false;return} settings.comps=next; syncActiveArbitrageFromSettings(); invalidateAnalysisCache(); render();}));}
-function renderEntryFields(){const host=$('entryFields'); if(!host)return; const syms=[settings.anchor,...settings.comps]; host.innerHTML=syms.map(s=>`<div class="field" style="margin-top:8px"><label for="q_${s}">${s} — preço em ${settings.fiat} às 21:00</label><input id="q_${s}" type="number" step="any" inputmode="decimal" placeholder="Ex.: 0.1932"></div>`).join('')}
-function drawChart(svgId,datasets,thresholds){const svg=$(svgId); svg.innerHTML=''; const W=900,H=300,p={l:48,r:18,t:14,b:32}, x0=p.l,x1=W-p.r,y0=H-p.b,y1=p.t; const vals=datasets.flatMap(d=>d.values.filter(Number.isFinite)); if(!vals.length){svg.innerHTML='<text x="450" y="150" text-anchor="middle" fill="#9eb0d1">Sem dados suficientes</text>';return} let min=Math.min(...vals),max=Math.max(...vals); if(thresholds)for(const t of thresholds){min=Math.min(min,t);max=Math.max(max,t)} let span=max-min||1;min-=span*.08;max+=span*.08; const n=Math.max(...datasets.map(d=>d.values.length)); const x=i=>x0+(i/Math.max(1,n-1))*(x1-x0), y=v=>y0-((v-min)/(max-min))*(y0-y1); for(let i=0;i<4;i++){const yy=y0-(i/3)*(y0-y1);const l=line(x0,yy,x1,yy,'#2b3857',1);svg.appendChild(l)} if(thresholds)for(const t of thresholds){const l=line(x0,y(t),x1,y(t),'#7b89a8',1,'5 5');svg.appendChild(l);const tx=text(8,y(t)+4,'#9eb0d1',11,String(t));svg.appendChild(tx)} datasets.forEach((ds,j)=>{const pts=ds.values.map((v,i)=>Number.isFinite(v)?`${x(i)},${y(v)}`:null).filter(Boolean).join(' ');const poly=document.createElementNS('http://www.w3.org/2000/svg','polyline');poly.setAttribute('points',pts);poly.setAttribute('fill','none');poly.setAttribute('stroke',j%2?'var(--series2)':'var(--accent)');poly.setAttribute('stroke-width','2.2');svg.appendChild(poly)}); [0,Math.floor(n/2),n-1].forEach((i,j)=>{if(i<0)return;const t=text(x(i),H-9,'#9eb0d1',11,j===0?'start':j===2?'end':'middle',niceDate(datasets[0].dates[i]||''));svg.appendChild(t)});}
-function line(x1,y1,x2,y2,stroke,w,dash){const l=document.createElementNS('http://www.w3.org/2000/svg','line');[['x1',x1],['y1',y1],['x2',x2],['y2',y2]].forEach(([a,v])=>l.setAttribute(a,v));l.setAttribute('stroke',stroke);l.setAttribute('stroke-width',w);if(dash)l.setAttribute('stroke-dasharray',dash);return l}
-function text(x,y,fill,size,anchor='start',txt=''){const t=document.createElementNS('http://www.w3.org/2000/svg','text');t.setAttribute('x',x);t.setAttribute('y',y);t.setAttribute('fill',fill);t.setAttribute('font-size',size);t.setAttribute('text-anchor',anchor);t.textContent=txt;return t}
-async function refreshRemoteData(){
-  let dataOk=false;
-  try{
-    const res=await fetch('data.csv?ts='+Date.now(),{cache:'no-store'});
-    if(!res.ok) throw new Error('HTTP '+res.status);
-    const text=await res.text();
-    const imported=parseCSV(text);
-    if(imported.length){
-      rows=mergeRemoteWithSeed(imported);
-      invalidateAnalysisCache();
-      saveLocal();
-      populateControls();
-      render();
-      dataOk=true;
-    }
-  }catch(e){
-    $('automationStatus').textContent='Modo local: não foi possível sincronizar data.csv automaticamente. A base local continua disponível.';
-  }
-
-  await loadCaptureLog();
-  updateCaptureStatus();
-
-  if(dataOk){
-    maybeClearTemporaryAfterRemote();
-    $('automationStatus').textContent='Base remota sincronizada a partir do data.csv do GitHub. A coleta é feita pelo GitHub Actions.';
-  }
-  return dataOk;
+function populateControls(){
+  ensureSettings(); renderArbitrageSelector();
+  const fiat=$('fiat'),lookback=$('lookback'),asof=$('asof'),anchor=$('anchor');
+  if(fiat){const units=Object.values(assetCatalog).filter(a=>a.enabled!==false).map(a=>a.symbol).sort();fiat.innerHTML=units.map(a=>`<option>${a}</option>`).join('');fiat.value=settings.fiat;}
+  if(lookback)lookback.value=String(settings.lookback);
+  if(asof){const iso=latestOfficialSnapshotISO();asof.dataset.iso=iso;asof.textContent=iso?formatSnapshotBR(iso):'—';}
+  if(anchor){anchor.innerHTML=cryptoAssets().map(a=>`<option>${a}</option>`).join('');anchor.value=settings.anchor;}
+  renderChecks();
 }
 async function loadCaptureLog(){
   try{
@@ -713,12 +769,12 @@ function renderTable(analysisPoints=priceMap()){
 function latestDateForAsset(a){const d=calcAt(a);return d[d.length-1]||null;}
 
 async function loadDemo(){rows=DEMO_DATA.map(r=>({...r})); invalidateAnalysisCache(); saveLocal();}
-$('arbitrageSelect').addEventListener('change',e=>{ activeArbitrageId=e.target.value; applyActiveArbitrage(); invalidateAnalysisCache(); saveModel(); populateControls(); render(); updateCaptureStatus(); });
+$('arbitrageSelect').addEventListener('change',e=>{ syncActiveArbitrageFromSettings(); activeArbitrageId=e.target.value; applyActiveArbitrage(); invalidateAnalysisCache(); saveModel(); populateControls(); render(); updateCaptureStatus(); });
 $('tabArbitragens').addEventListener('click',()=>setView('arbitragens'));
 $('tabAtivos').addEventListener('click',()=>setView('ativos'));
 $('addAssetBtn').addEventListener('click',addAsset);
 $('clearAssetFormBtn').addEventListener('click',clearAssetForm);
-$('newAssetType').addEventListener('change',()=>{const type=$('newAssetType').value;$('newAssetCmcId').disabled=type==='FIAT';if(type==='FIAT')$('newAssetCmcId').value='';});
+$('newAssetType').addEventListener('change',()=>{const type=$('newAssetType').value;$('newAssetCmcId').disabled=type==='FIAT';$('newAssetCoinGeckoId').disabled=type==='FIAT';if(type==='FIAT'){$('newAssetCmcId').value='';$('newAssetCoinGeckoId').value='';}});
 $('fiat')?.addEventListener('change',e=>{settings.fiat=e.target.value;syncActiveArbitrageFromSettings();invalidateAnalysisCache();saveModel();render()}); $('anchor')?.addEventListener('change',e=>{settings.anchor=e.target.value;settings.comps=cryptoAssets().filter(a=>a!==settings.anchor).slice(0,Math.min(2,cryptoAssets().length-1));syncActiveArbitrageFromSettings();invalidateAnalysisCache();saveModel();render()}); $('lookback')?.addEventListener('change',e=>{settings.lookback=Number(e.target.value);syncActiveArbitrageFromSettings();invalidateAnalysisCache();saveModel();render()}); 
 $('liveBtn').addEventListener('click',fetchLivePrices);
 setInterval(async()=>{if(temporarySnapshot){const today21=new Date();today21.setHours(21,0,0,0);if(new Date()>=today21){await refreshRemoteData();maybeClearTemporaryAfterRemote();}}},5*60*1000);

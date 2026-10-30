@@ -359,18 +359,45 @@
     }
   }
 
-  function currentArb() {
-    const select = $('arbitrageSelect');
+  function currentArb(selectOverride = null) {
+    const select = selectOverride || $('arbitrageSelect');
     const selectedId = String(select?.value || '');
     const byId = Object.values(ARBS).find(a => a.id === selectedId);
     if (byId) return { ...byId };
     const name = String(select?.selectedOptions?.[0]?.textContent || '').trim().replace(/\s+/g, ' ');
     if (ARBS[name]) return { ...ARBS[name] };
     const p = name.split('/').map(x => x.trim()).filter(Boolean);
-    return p.length >= 2 ? { id: selectedId || 'current', name, anchor: p[0], assets: p.slice(1, 3) } : { ...ARBS['ADA / NIGHT / SNEK'] };
+    return p.length >= 2 ? { id: selectedId || 'current', name, anchor: p[0], assets: p.slice(1) } : { ...ARBS['ADA / NIGHT / SNEK'] };
   }
-  function strategies(a) { const [x, y] = a.assets; return [`${a.anchor} → ${x} → ${a.anchor}`, `${a.anchor} → ${y} → ${a.anchor}`, `${x} → ${y} → ${a.anchor}`, `${y} → ${x} → ${a.anchor}`]; }
-  function initialAsset(strategy, a) { const [x, y] = a.assets; const s = strategies(a); return strategy === s[0] ? x : strategy === s[1] ? y : strategy === s[2] ? y : x; }
+  function strategies(a) {
+    const assets = Array.isArray(a.assets) ? a.assets : [];
+    if (assets.length === 2) {
+      const [x,y] = assets;
+      return [`${a.anchor} → ${x} → ${a.anchor}`, `${a.anchor} → ${y} → ${a.anchor}`, `${x} → ${y} → ${a.anchor}`, `${y} → ${x} → ${a.anchor}`];
+    }
+    return assets.map(asset => `${a.anchor} → ${asset} → ${a.anchor}`);
+  }
+  function initialAsset(strategy, a) {
+    const path = String(strategy || '').split('→').map(x => x.trim()).filter(Boolean);
+    return path.length >= 2 ? path[1] : (a.assets || [])[0];
+  }
+  function syncArbitrageDefinitions(configs) {
+    if (!Array.isArray(configs) || !configs.length) return;
+    Object.keys(ARBS).forEach(key => delete ARBS[key]);
+    configs.forEach(row => {
+      const item = {
+        id: row.id, name: row.name, anchor: row.anchor || row.anchor_symbol,
+        assets: [...(row.assets || row.comparativesDefault || row.comparative_symbols || [])]
+      };
+      ARBS[item.name] = item;
+    });
+    const selected = currentArb();
+    const tradeSelect = $('tradeVisualArbitrage');
+    if (tradeSelect && !tradeSelect.querySelector('option:checked')) populateArbitrageSelect(tradeSelect, selected.id);
+  }
+  document.addEventListener('crypto-arb-configurations-updated', event => {
+    syncArbitrageDefinitions(event.detail);
+  });
   function fmt(value, maxFractionDigits = 8) { const n = Number(value); return Number.isFinite(n) ? n.toLocaleString('pt-BR', { maximumFractionDigits: maxFractionDigits }) : '—'; }
   function escapeHtml(value) {
     return String(value ?? '').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
@@ -390,6 +417,22 @@
     if (!res.ok) throw new Error(body?.msg || body?.message || body?.hint || body?.details || `HTTP ${res.status}`);
     return body;
   }
+
+  window.cryptoArbitrageApiRequest = api;
+  window.cryptoArbitrageEnsureAuth = async function({ requireMfa = false } = {}) {
+    if (!(await ensureFreshSession()) || !session?.access_token) {
+      throw new Error('Faça login pelo painel Trades para acessar suas configurações.');
+    }
+    if (requireMfa) {
+      const ready = await ensureMfaForCurrentSession();
+      if (!ready) throw new Error('Não foi possível concluir a verificação MFA.');
+      const assurance = await readMfaState();
+      if (assurance.currentLevel !== 'aal2') {
+        throw new Error('Esta alteração exige MFA (AAL2). Ative ou conclua a verificação em duas etapas no painel Trades.');
+      }
+    }
+    return { userId: session?.user?.id || null, mfaReady };
+  };
 
   async function logout() {
     const current = session;
@@ -671,12 +714,12 @@
   function populateArbitrageSelect(select, selectedId) { if (!select) return; select.innerHTML = Object.values(ARBS).map(x => `<option value="${x.id}" ${x.id === selectedId ? 'selected' : ''}>${x.name}</option>`).join(''); }
   function setTradeModalTitle(title) { const modal = $('tradeVisualModal'); const h2 = modal?.querySelector('.section-head h2'); if (h2) h2.textContent = title; }
   function prepareForm() { const a = currentArb(); populateArbitrageSelect($('tradeVisualArbitrage'), a.id); $('tradeVisualStrategy').innerHTML = strategies(a).map(x => `<option value="${x}">${x}</option>`).join(''); $('tradeVisualOpenedAt').value = localDate(); $('tradeVisualClosedAt').value = ''; $('tradeVisualAnchorAmount').value = ''; $('tradeVisualQuantity').value = ''; $('tradeVisualExitAmount').value = ''; $('tradeVisualMessage').textContent = ''; $('tradeVisualResult').classList.add('hidden'); $('tradeVisualModal').dataset.mode = 'new'; $('tradeVisualModal').dataset.tradeId = ''; setTradeModalTitle('Novo trade'); updateForm(); }
-  function updateForm() { const a = currentArb(); const s = $('tradeVisualStrategy')?.value || strategies(a)[0]; const asset = initialAsset(s, a); const cap = Number($('tradeVisualAnchorAmount')?.value); const qty = Number($('tradeVisualQuantity')?.value); const out = Number($('tradeVisualExitAmount')?.value); if ($('tradeVisualInitialAsset')) $('tradeVisualInitialAsset').value = asset; if ($('tradeVisualAnchorLabel')) $('tradeVisualAnchorLabel').textContent = `Quantidade utilizada (${a.anchor})`; if ($('tradeVisualQuantityLabel')) $('tradeVisualQuantityLabel').textContent = `Quantidade recebida (${asset})`; if ($('tradeVisualExitAmountLabel')) $('tradeVisualExitAmountLabel').textContent = `Quantidade recebida na âncora (${a.anchor})`; if ($('tradeVisualEntryDerived')) $('tradeVisualEntryDerived').innerHTML = `Preço efetivo de entrada: <strong>${cap > 0 && qty > 0 ? `${fmt(cap / qty)} ${a.anchor}/${asset}` : '—'}</strong>`; if ($('tradeVisualExitDerived')) $('tradeVisualExitDerived').innerHTML = `Preço efetivo de saída: <strong>${out > 0 && qty > 0 ? `${fmt(out / qty)} ${a.anchor}/${asset}` : '—'}</strong>`; }
+  function updateForm() { const a = currentArb($('tradeVisualArbitrage')); const s = $('tradeVisualStrategy')?.value || strategies(a)[0]; const asset = initialAsset(s, a); const cap = Number($('tradeVisualAnchorAmount')?.value); const qty = Number($('tradeVisualQuantity')?.value); const out = Number($('tradeVisualExitAmount')?.value); if ($('tradeVisualInitialAsset')) $('tradeVisualInitialAsset').value = asset; if ($('tradeVisualAnchorLabel')) $('tradeVisualAnchorLabel').textContent = `Quantidade utilizada (${a.anchor})`; if ($('tradeVisualQuantityLabel')) $('tradeVisualQuantityLabel').textContent = `Quantidade recebida (${asset})`; if ($('tradeVisualExitAmountLabel')) $('tradeVisualExitAmountLabel').textContent = `Quantidade recebida na âncora (${a.anchor})`; if ($('tradeVisualEntryDerived')) $('tradeVisualEntryDerived').innerHTML = `Preço efetivo de entrada: <strong>${cap > 0 && qty > 0 ? `${fmt(cap / qty)} ${a.anchor}/${asset}` : '—'}</strong>`; if ($('tradeVisualExitDerived')) $('tradeVisualExitDerived').innerHTML = `Preço efetivo de saída: <strong>${out > 0 && qty > 0 ? `${fmt(out / qty)} ${a.anchor}/${asset}` : '—'}</strong>`; }
   window.updateTradeVisualForm = updateForm;
   window.openTradeVisualForm = () => { if (!session?.access_token) { showAuth(); return; } prepareForm(); $('tradeVisualModal').classList.remove('hidden'); $('tradeVisualModal').setAttribute('aria-hidden', 'false'); };
   window.closeTradeVisualForm = () => { $('tradeVisualModal')?.classList.add('hidden'); $('tradeVisualModal')?.setAttribute('aria-hidden', 'true'); };
 
-  async function submitForm(e) { e.preventDefault(); if (!session?.access_token) { showAuth(); return false; } const a = currentArb(); const s = $('tradeVisualStrategy').value || strategies(a)[0]; const asset = initialAsset(s, a); const opened = $('tradeVisualOpenedAt').value; const closed = $('tradeVisualClosedAt').value; const cap = Number($('tradeVisualAnchorAmount').value); const qty = Number($('tradeVisualQuantity').value); const out = Number($('tradeVisualExitAmount').value); const id = $('tradeVisualModal').dataset.tradeId || ''; const msg = $('tradeVisualMessage'); const result = $('tradeVisualResult'); if (!(cap > 0) || !(qty > 0)) { msg.textContent = `Preencha a quantidade utilizada em ${a.anchor} e a quantidade recebida em ${asset}.`; return false; } if (closed || out > 0) { if (!closed || !(out > 0)) { msg.textContent = 'Para fechar, informe a data/hora de saída e a quantidade recebida na âncora.'; return false; } if (new Date(closed) < new Date(opened)) { msg.textContent = 'A saída não pode ser anterior à entrada.'; return false; } }
+  async function submitForm(e) { e.preventDefault(); if (!session?.access_token) { showAuth(); return false; } const a = currentArb($('tradeVisualArbitrage')); const s = $('tradeVisualStrategy').value || strategies(a)[0]; const asset = initialAsset(s, a); const opened = $('tradeVisualOpenedAt').value; const closed = $('tradeVisualClosedAt').value; const cap = Number($('tradeVisualAnchorAmount').value); const qty = Number($('tradeVisualQuantity').value); const out = Number($('tradeVisualExitAmount').value); const id = $('tradeVisualModal').dataset.tradeId || ''; const msg = $('tradeVisualMessage'); const result = $('tradeVisualResult'); if (!(cap > 0) || !(qty > 0)) { msg.textContent = `Preencha a quantidade utilizada em ${a.anchor} e a quantidade recebida em ${asset}.`; return false; } if (closed || out > 0) { if (!closed || !(out > 0)) { msg.textContent = 'Para fechar, informe a data/hora de saída e a quantidade recebida na âncora.'; return false; } if (new Date(closed) < new Date(opened)) { msg.textContent = 'A saída não pode ser anterior à entrada.'; return false; } }
     const payload = { user_id: session.user.id, arbitrage_id: a.id, arbitrage_name: a.name, anchor_symbol: a.anchor, strategy: s, opened_at: new Date(opened).toISOString(), initial_anchor_amount: cap, current_asset: asset, current_quantity: qty, entry_ratio_anchor_per_asset: cap / qty, entry_anchor_amount: cap, closed_at: closed ? new Date(closed).toISOString() : null, closed_anchor_amount: closed ? out : null };
     msg.textContent = id ? 'Atualizando no PostgreSQL…' : 'Gravando no PostgreSQL…';
     try { const saved = await api(id ? `/rest/v1/trades?id=eq.${encodeURIComponent(id)}&user_id=eq.${encodeURIComponent(session.user.id)}` : '/rest/v1/trades', { method: id ? 'PATCH' : 'POST', headers: { Prefer: 'return=representation' }, body: JSON.stringify(payload) }); if (!id && saved?.[0]) await api('/rest/v1/trade_legs', { method: 'POST', headers: { Prefer: 'return=representation' }, body: JSON.stringify({ trade_id: saved[0].id, user_id: session.user.id, leg_order: 1, from_asset: a.anchor, to_asset: asset, from_amount: cap, to_amount: qty, ratio_from_to: qty / cap, captured_at: new Date(opened).toISOString() }) }); msg.textContent = id ? 'Trade atualizado no PostgreSQL.' : 'Trade gravado no PostgreSQL.'; const profit = closed ? out - cap : 0; result.innerHTML = closed ? `<strong>Trade fechado salvo</strong><br>${fmt(cap)} ${a.anchor} → ${fmt(qty)} ${asset} → ${fmt(out)} ${a.anchor}<br>Resultado: ${fmt(profit)} ${a.anchor} (${fmt(cap > 0 ? (profit / cap) * 100 : NaN, 4)}%)` : `<strong>Trade aberto salvo</strong><br>${fmt(cap)} ${a.anchor} → ${fmt(qty)} ${asset}<br>Preço efetivo: ${fmt(cap / qty)} ${a.anchor}/${asset}`; result.classList.remove('hidden'); await renderTrades(); } catch (e) { msg.textContent = `Erro ao salvar: ${e.message}`; } return false; }
@@ -726,7 +769,13 @@
     $('newTradeBtn')?.addEventListener('click', window.openTradeVisualForm);
     $('tradeVisualForm')?.addEventListener('submit', submitForm);
     document.addEventListener('input', e => { if (e.target?.closest('#tradeVisualModal')) updateForm(); });
-    document.addEventListener('change', e => { if (e.target?.id === 'tradeVisualStrategy' || e.target?.id === 'tradeVisualArbitrage') updateForm(); });
+    document.addEventListener('change', e => {
+      if (e.target?.id === 'tradeVisualArbitrage') {
+        const a = currentArb(e.target);
+        $('tradeVisualStrategy').innerHTML = strategies(a).map(x => `<option value="${escapeHtml(x)}">${escapeHtml(x)}</option>`).join('');
+        updateForm();
+      } else if (e.target?.id === 'tradeVisualStrategy') updateForm();
+    });
     initRecoveryFlow();
     if (session?.access_token) {
       const ready = await ensureMfaForCurrentSession();
