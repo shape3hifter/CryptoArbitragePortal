@@ -44,6 +44,6 @@ O portal mantém as configurações permanentes das estratégias no Supabase, na
 
 A tela **Configurações** permite criar, editar e habilitar o monitoramento automático. Novas estratégias começam com o monitoramento desligado. As alterações experimentais na tela **Arbitragens** são mantidas apenas durante a sessão e não modificam os parâmetros permanentes.
 
-O motor horário lê as estratégias habilitadas diretamente do Supabase, incluindo a janela estatística individual. O processo diário de captura também consulta o catálogo central; `config.json` permanece como fallback operacional caso o catálogo não esteja acessível.
+O motor horário lê as estratégias habilitadas diretamente do Supabase, incluindo a janela estatística individual. O processo diário de captura consulta exclusivamente o catálogo central do Supabase. `config.json` contém apenas parâmetros operacionais da captura, como fuso e horário; se o catálogo central estiver indisponível, a captura falha explicitamente em vez de recorrer a uma lista local divergente.
 
 As alterações de configuração exigem uma sessão autenticada com MFA (AAL2), conforme as políticas RLS do banco.
