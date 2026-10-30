@@ -197,20 +197,32 @@ def main() -> int:
     prices: dict[str, str] = {}
     sources: dict[str, str] = {}
     timestamps: dict[str, str] = {}
+    asset_errors: list[dict[str, str]] = []
     for asset in assets:
         symbol = str(asset["symbol"]).upper()
         kind = str(asset.get("type", "CRYPTO")).upper()
-        if kind == "FIAT":
-            rate, rate_date = fetch_fiat_rate(symbol, reference_date)
-            prices[symbol] = decimal_text(rate)
-            sources[symbol] = "frankfurter"
-            timestamps[symbol] = rate_date.isoformat()
-        else:
-            price, candle_open = fetch_crypto_open(asset, target_utc)
-            prices[symbol] = decimal_text(price)
-            sources[symbol] = "coinmarketcap_public_historical_web_data"
-            timestamps[symbol] = candle_open.isoformat()
-        time.sleep(0.2)
+        try:
+            if kind == "FIAT":
+                rate, rate_date = fetch_fiat_rate(symbol, reference_date)
+                prices[symbol] = decimal_text(rate)
+                sources[symbol] = "frankfurter"
+                timestamps[symbol] = rate_date.isoformat()
+            else:
+                if not asset.get("cmc_id"):
+                    raise RuntimeError("CoinMarketCap ID não cadastrado")
+                price, candle_open = fetch_crypto_open(asset, target_utc)
+                prices[symbol] = decimal_text(price)
+                sources[symbol] = "coinmarketcap_public_historical_web_data"
+                timestamps[symbol] = candle_open.isoformat()
+        except Exception as exc:
+            asset_errors.append({"symbol": symbol, "error": str(exc)})
+            print(f"WARNING: captura de {symbol} falhou: {exc}", file=sys.stderr)
+        finally:
+            time.sleep(0.2)
+
+    if not prices:
+        details = "; ".join(f"{item['symbol']}: {item['error']}" for item in asset_errors)
+        raise RuntimeError(f"Nenhum ativo pôde ser capturado. {details}")
 
     rows = read_rows()
     symbols = set(prices)
@@ -230,13 +242,14 @@ def main() -> int:
         "reference_utc": target_utc.isoformat(),
         "capture_after_time": after_time_str,
         "executed_at": now_local.isoformat(),
-        "status": "manual_test" if manual else "on_time",
+        "status": ("partial_" if asset_errors else "") + ("manual_test" if manual else "on_time"),
         "price_method": "hourly_open_for_crypto; latest_published_daily_fx_for_fiat",
         "asset_catalog_source": asset_catalog_source,
         "assets": [{"symbol": str(a["symbol"]).upper(), "type": str(a.get("type", "CRYPTO")).upper(), "cmc_id": a.get("cmc_id")} for a in assets],
         "prices": prices,
         "sources": sources,
         "source_timestamps": timestamps,
+        "asset_errors": asset_errors,
     }
     LOG_PATH.write_text(json.dumps(record, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     print(json.dumps(record, ensure_ascii=False))
