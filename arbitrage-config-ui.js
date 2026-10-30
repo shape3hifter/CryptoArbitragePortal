@@ -401,7 +401,7 @@
     mount();
     // Keep the central asset catalog synchronized when the existing Ativos page
     // saves local metadata. The signature guard avoids repeat network writes.
-    document.addEventListener('crypto-arb-model-saved', async () => {
+    document.addEventListener('crypto-arb-assets-changed', async () => {
       const local = localAssets();
       const signature = JSON.stringify(local);
       if (signature === lastLocalAssetSignature) return;
