@@ -391,6 +391,22 @@
     return body;
   }
 
+  window.cryptoArbitrageApiRequest = api;
+  window.cryptoArbitrageEnsureAuth = async function({ requireMfa = false } = {}) {
+    if (!(await ensureFreshSession()) || !session?.access_token) {
+      throw new Error('Faça login pelo painel Trades para acessar suas configurações.');
+    }
+    if (requireMfa) {
+      const ready = await ensureMfaForCurrentSession();
+      if (!ready) throw new Error('Não foi possível concluir a verificação MFA.');
+      const assurance = await readMfaState();
+      if (assurance.currentLevel !== 'aal2') {
+        throw new Error('Esta alteração exige MFA (AAL2). Ative ou conclua a verificação em duas etapas no painel Trades.');
+      }
+    }
+    return { userId: session?.user?.id || null, mfaReady };
+  };
+
   async function logout() {
     const current = session;
     saveSession(null);
