@@ -246,7 +246,6 @@ function syncActiveArbitrageFromSettings(){
 }
 function saveModel(){
   localStorage.setItem(MODEL_KEY,JSON.stringify({version:MODEL_VERSION,baseCurrency:'USD',assetCatalog,arbitrages,activeArbitrageId,seededRows}));
-  document.dispatchEvent(new CustomEvent('crypto-arb-model-saved'));
 }
 function loadModel(){
   try{
@@ -487,20 +486,20 @@ function addAsset(){
     const a=assetCatalog[editingAssetSymbol]; if(!a){return;}
     if(!name){alert('Informe um nome.');return;}
     if(type==='CRYPTO' && (!Number.isInteger(id)||id<=0)){alert('Para Crypto, informe o CoinMarketCap ID.');return;}
-    a.name=name; if(type==='CRYPTO'){a.cmc_id=id;a.coingecko_id=cg||null;} saveModel(); resetAssetForm(); clearAssetForm(); renderAssetsView(); populateControls(); render();
+    a.name=name; if(type==='CRYPTO'){a.cmc_id=id;a.coingecko_id=cg||null;} saveModel(); document.dispatchEvent(new CustomEvent('crypto-arb-assets-changed')); resetAssetForm(); clearAssetForm(); renderAssetsView(); populateControls(); render();
     alert(`${editingAssetSymbol} atualizado.`); return;
   }
   if(!/^[A-Z0-9.\\-_]{2,15}$/.test(symbol)){alert('Informe um símbolo válido.');return;}
   if(assetCatalog[symbol] && assetCatalog[symbol].enabled!==false){alert(`${symbol} já está cadastrado. Use Editar para alterar seus dados.`);return;}
   if(type==='CRYPTO' && (!Number.isInteger(id)||id<=0)){alert('Para Crypto, informe o CoinMarketCap ID.');return;}
   assetCatalog[symbol]={symbol,name,type,cmc_id:type==='CRYPTO'?id:null,coingecko_id:type==='CRYPTO'?(cg||null):null,enabled:true,base_quote:'USD'};
-  saveModel();renderAssetsView();populateControls();render();clearAssetForm();
+  saveModel();document.dispatchEvent(new CustomEvent('crypto-arb-assets-changed'));renderAssetsView();populateControls();render();clearAssetForm();
   if(type==='CRYPTO'){
     const ok=confirm(`${symbol} foi cadastrado. Quer carregar agora o histórico de até ${HISTORY_TARGET_DAYS} dias?`);
     if(ok) loadAssetHistory(symbol);
   }
 }
-function toggleAsset(symbol){const a=assetCatalog[symbol];if(!a)return;if(a.enabled!==false && assetIsUsed(symbol)){alert(`${symbol} está sendo usado por uma arbitragem e não pode ser inativado nesta etapa.`);return}a.enabled=a.enabled===false;saveModel();populateControls();renderAssetsView();render();}
+function toggleAsset(symbol){const a=assetCatalog[symbol];if(!a)return;if(a.enabled!==false && assetIsUsed(symbol)){alert(`${symbol} está sendo usado por uma arbitragem e não pode ser inativado nesta etapa.`);return}a.enabled=a.enabled===false;saveModel();document.dispatchEvent(new CustomEvent('crypto-arb-assets-changed'));populateControls();renderAssetsView();render();}
 function historyProxyUrl(symbol){const id=assetCatalog[symbol]?.cmc_id;if(!id)throw new Error(`CMC ID não cadastrado para ${symbol}`);const end=Math.floor(Date.now()/1000);const start=end-HISTORY_TARGET_DAYS*86400;const url=`https://api.coinmarketcap.com/data-api/v3.1/cryptocurrency/historical?id=${id}&convertId=2781&timeStart=${start}&timeEnd=${end}&interval=1d`;return 'https://corsproxy.io/?url='+encodeURIComponent(url);}
 function parseHistoricalResponse(payload){
   const quotes=payload?.data?.quotes||[]; if(!Array.isArray(quotes))return [];
