@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import re
 import sys
 import time
 from datetime import date, datetime, time as dt_time, timedelta, timezone
@@ -55,8 +56,8 @@ def load_configured_assets(config: dict) -> tuple[list[dict], str]:
     config_js = ROOT / "supabase" / "config.js"
     try:
         source = config_js.read_text(encoding="utf-8")
-        url_match = re.search(r"url\\s*:\\s*[\'\"]([^\'\"]+)[\'\"]", source)
-        key_match = re.search(r"anonKey\\s*:\\s*[\'\"]([^\'\"]+)[\'\"]", source)
+        url_match = re.search(r"url\s*:\s*[\'\"]([^\'\"]+)[\'\"]", source)
+        key_match = re.search(r"anonKey\s*:\s*[\'\"]([^\'\"]+)[\'\"]", source)
         if not url_match or not key_match:
             raise RuntimeError("Supabase public client config not found")
         query = urlencode({"select": "symbol,name,type,cmc_id,enabled", "enabled": "eq.true", "order": "symbol.asc"})
