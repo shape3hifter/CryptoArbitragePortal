@@ -66,6 +66,28 @@ class CapturePartialFailureTests(unittest.TestCase):
             "error": "CoinMarketCap ID não cadastrado",
         }])
 
+
+    def test_catalog_outage_never_uses_legacy_config_asset_list(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            supabase_dir = root / "supabase"
+            supabase_dir.mkdir()
+            (supabase_dir / "config.js").write_text(
+                'window.SUPABASE_CONFIG = { url: "https://example.supabase.co", anonKey: "public-anon-key" };',
+                encoding="utf-8",
+            )
+            with (
+                patch.object(capture, "ROOT", root),
+                patch.object(capture, "urlopen", side_effect=OSError("network unavailable")),
+            ):
+                with self.assertRaisesRegex(RuntimeError, "central Supabase asset catalog"):
+                    capture.load_configured_assets({
+                        "assets": [{"symbol": "LEGACY", "type": "CRYPTO", "cmc_id": 123}],
+                    })
+
+        runtime_config = json.loads(Path("config.json").read_text(encoding="utf-8"))
+        self.assertNotIn("assets", runtime_config)
+
     def test_all_asset_failures_do_not_write_an_empty_snapshot(self):
         assets = [{"symbol": "NEW", "type": "CRYPTO", "cmc_id": None}]
 
