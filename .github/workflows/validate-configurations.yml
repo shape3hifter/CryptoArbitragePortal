@@ -1,0 +1,70 @@
+name: Validate arbitrage configuration branch
+
+on:
+  push:
+    branches: [feature/configuracoes-v1]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Compile capture scripts
+        run: python -m py_compile scripts/capture_prices.py scripts/capture_prices_runner.py scripts/build_site.py
+
+      - name: Build deployable portal
+        run: python scripts/build_site.py
+
+      - name: Check standalone JavaScript
+        run: |
+          node --check arbitrage-config-ui.js
+          node --check trades-ui.js
+          node --check runtime-fixes.js
+
+      - name: Check inline JavaScript in source and built portal
+        run: |
+          python - <<'PY'
+          from html.parser import HTMLParser
+          from pathlib import Path
+          class Scripts(HTMLParser):
+              def __init__(self):
+                  super().__init__()
+                  self.inline = []
+                  self.active = False
+                  self.current = []
+              def handle_starttag(self, tag, attrs):
+                  if tag == "script" and not dict(attrs).get("src"):
+                      self.active = True
+                      self.current = []
+              def handle_data(self, data):
+                  if self.active:
+                      self.current.append(data)
+              def handle_endtag(self, tag):
+                  if tag == "script" and self.active:
+                      self.inline.append("".join(self.current))
+                      self.active = False
+          for source in [Path("index.html"), Path("dist/index.html")]:
+              parser = Scripts()
+              parser.feed(source.read_text(encoding="utf-8"))
+              for index, script in enumerate(parser.inline):
+                  if script.strip():
+                      target = Path("/tmp") / f"{source.parent.name or 'root'}-{source.stem}-{index}.js"
+                      target.write_text(script, encoding="utf-8")
+                      print(target)
+          PY
+          for file in /tmp/root-index-*.js /tmp/dist-index-*.js; do
+            test -f "$file" && node --check "$file"
+          done
