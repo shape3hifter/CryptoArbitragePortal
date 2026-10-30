@@ -43,7 +43,60 @@ def parse_args() -> argparse.Namespace:
 
 
 def load_config() -> dict:
-    return json.loads(CONFIG.read_text(encoding="utf-8"))
+    config = json.loads(CONFIG.read_text(encoding="utf-8"))
+    config["asset_source"] = "config_json_fallback"
+    config["asset_source_warning"] = None
+
+    # The Supabase asset catalog is the canonical source when it is reachable.
+    # Keep the checked-in config.json as an operational fallback so a transient
+    # Data API issue never stops the existing daily price capture.
+    try:
+        supabase_config = (ROOT / "supabase" / "config.js").read_text(encoding="utf-8")
+        url_match = __import__("re").search(r"url\s*:\s*'([^']+)'", supabase_config)
+        key_match = __import__("re").search(r"anonKey\s*:\s*'([^']+)'", supabase_config)
+        if not url_match or not key_match:
+            raise RuntimeError("supabase/config.js não possui URL/chave pública reconhecível.")
+
+        api_url = url_match.group(1).rstrip("/") + (
+            "/rest/v1/arbitrage_assets?select=symbol,name,type,cmc_id,enabled"
+            "&enabled=eq.true&order=symbol"
+        )
+        request = Request(api_url, headers={
+            "apikey": key_match.group(1),
+            "Accept": "application/json",
+            "User-Agent": "crypto-arbitrage-portal/1.0",
+        })
+        with urlopen(request, timeout=20) as response:
+            remote_assets = json.load(response)
+
+        if not isinstance(remote_assets, list) or not remote_assets:
+            raise RuntimeError("O catálogo central não retornou ativos habilitados.")
+
+        assets = []
+        for item in remote_assets:
+            symbol = str(item.get("symbol") or "").strip().upper()
+            kind = str(item.get("type") or "CRYPTO").strip().upper()
+            if not symbol or symbol == "USD":
+                continue
+            if kind == "CRYPTO":
+                cmc_id = item.get("cmc_id")
+                if not cmc_id or int(cmc_id) <= 0:
+                    continue
+                assets.append({
+                    "symbol": symbol, "type": "CRYPTO",
+                    "cmc_id": int(cmc_id),
+                })
+            elif kind == "FIAT":
+                assets.append({"symbol": symbol, "type": "FIAT"})
+
+        if not assets:
+            raise RuntimeError("Nenhum ativo habilitado e compatível com a coleta foi encontrado.")
+        config["assets"] = assets
+        config["asset_source"] = "supabase"
+    except Exception as exc:
+        config["asset_source_warning"] = str(exc)
+
+    return config
 
 
 def parse_clock(value: str) -> dt_time:
@@ -202,6 +255,8 @@ def main() -> int:
         "executed_at": now_local.isoformat(),
         "status": "manual_test" if manual else "on_time",
         "price_method": "hourly_open_for_crypto; latest_published_daily_fx_for_fiat",
+        "asset_source": config.get("asset_source", "config_json_fallback"),
+        "asset_source_warning": config.get("asset_source_warning"),
         "assets": [{"symbol": str(a["symbol"]).upper(), "type": str(a.get("type", "CRYPTO")).upper(), "cmc_id": a.get("cmc_id")} for a in assets],
         "prices": prices,
         "sources": sources,

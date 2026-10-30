@@ -7,12 +7,7 @@ const HISTORY = Deno.env.get("ARBITRAGE_HISTORY_URL") ?? "https://raw.githubuser
 const RESEND_KEY = Deno.env.get("RESEND_API_KEY") ?? "";
 const EMAIL_TO = Deno.env.get("ARBITRAGE_EMAIL_TO") ?? "shape3hifter@gmail.com";
 const EMAIL_FROM = Deno.env.get("ARBITRAGE_EMAIL_FROM") ?? "Crypto Arbitrage <onboarding@resend.dev>";
-const Z = 1.5, LOOKBACK = 60, OPPORTUNITY_STEP = 0.05;
-const IDS: Record<string, string> = { ADA: "cardano", NIGHT: "midnight-3", SNEK: "snek", SOL: "solana", BONK: "bonk", WIF: "dogwifcoin" };
-const ARBS: Record<string, any> = {
-  "arb-ada-night-snek": { name: "ADA / NIGHT / SNEK", anchor: "ADA", comparatives: ["NIGHT", "SNEK"], strategies: { NIGHT: "NIGHT → SNEK → ADA", SNEK: "SNEK → NIGHT → ADA" } },
-  "arb-sol-bonk-wif": { name: "SOL / BONK / WIF", anchor: "SOL", comparatives: ["BONK", "WIF"], strategies: { BONK: "SOL → BONK → SOL", WIF: "SOL → WIF → SOL" } }
-};
+const Z = 1.5, OPPORTUNITY_STEP = 0.05;
 const json = (x: unknown, s = 200) => new Response(JSON.stringify(x), { status: s, headers: { "content-type": "application/json" } });
 const mean = (a: number[]) => a.reduce((x, y) => x + y, 0) / a.length;
 const sd = (a: number[]) => { if (a.length < 2) return 0; const m = mean(a); return Math.sqrt(a.reduce((s, x) => s + (x - m) ** 2, 0) / (a.length - 1)); };
@@ -110,10 +105,48 @@ function subjectFor(t: string, row?: any) {
 async function sendEmail(row: any) { if (!RESEND_KEY) throw Error("RESEND_API_KEY is not configured"); const payload = { from: EMAIL_FROM, to: [EMAIL_TO], subject: row.email_subject || subjectFor(row.event_type, row), text: row.message, html: htmlFor(row.message) }; const r = await fetch("https://api.resend.com/emails", { method: "POST", headers: { Authorization: `Bearer ${RESEND_KEY}`, "Content-Type": "application/json", "Idempotency-Key": `arbitrage/${row.id}` }, body: JSON.stringify(payload) }); const b = await r.json().catch(() => ({})); if (!r.ok) throw Error(`Resend ${r.status}: ${b?.message ?? JSON.stringify(b)}`); return String(b?.id ?? ""); }
 async function deliverPending() { const since = new Date(Date.now() - 86400000).toISOString(); const { data, error } = await db.from("hourly_arbitrage_message_preview").select("id,event_type,email_subject,message,evaluated_at").in("email_status", ["pending", "failed"]).gte("evaluated_at", since).order("evaluated_at", { ascending: true }).limit(50); if (error) throw error; let sent = 0, failed = 0; for (const row of data ?? []) { try { const id = await sendEmail(row); const { error: e } = await db.from("hourly_arbitrage_message_preview").update({ email_status: "sent", email_sent_at: new Date().toISOString(), email_provider_id: id || null, email_error: null }).eq("id", row.id); if (e) throw e; sent++; } catch (e) { failed++; await db.from("hourly_arbitrage_message_preview").update({ email_status: "failed", email_error: e instanceof Error ? e.message : String(e) }).eq("id", row.id); } } return { sent, failed }; }
 async function auth(req: Request) { const secret = req.headers.get("x-cron-secret")?.trim() || ""; if (secret) { const { data } = await db.from("hourly_arbitrage_scheduler_config").select("cron_secret").eq("id", 1).maybeSingle(); if (data?.cron_secret === secret) return { service: true, userId: null as string | null }; } const m = (req.headers.get("authorization") || "").match(/^Bearer\s+(.+)$/i); if (!m) return { service: false, userId: null as string | null }; const pub = Deno.env.get("SUPABASE_ANON_KEY") || ""; if (!pub) return { service: false, userId: null as string | null }; const c = createClient(URL, pub, { global: { headers: { Authorization: `Bearer ${m[1]}` } }, auth: { persistSession: false, autoRefreshToken: false } }); const { data, error } = await c.auth.getUser(m[1]); return { service: false, userId: error || !data.user ? null : data.user.id }; }
-async function hist() { const r = await fetch(HISTORY, { headers: { Accept: "text/csv" } }); if (!r.ok) throw Error(`history fetch failed: ${r.status}`); const ls = (await r.text()).trim().split(/\r?\n/), h = ls[0].split(",").map(x => x.trim().toLowerCase()); if (h.includes("symbol") && h.includes("price")) { const di = h.indexOf("date"), ti = h.indexOf("time"), si = h.indexOf("symbol"), pi = h.indexOf("price"), fi = h.indexOf("fiat"), m = new Map<string, any>(); for (const line of ls.slice(1)) { const c = line.split(","), sym = String(c[si] || "").toUpperCase(), v = Number(c[pi]); if (!sym || !Number.isFinite(v) || !Object.keys(IDS).includes(sym)) continue; const d = String(c[di] || ""); if (!d) continue; const tm = ti >= 0 ? String(c[ti] || "") : "00:00", fiat = fi >= 0 ? String(c[fi] || "USD") : "USD"; if (fiat.toUpperCase() !== "USD") continue; const key = `${d}T${tm}:00.000Z`; if (!m.has(key)) m.set(key, { date: key, prices: {} }); m.get(key).prices[sym] = v; } return [...m.values()].sort((a, b) => a.date.localeCompare(b.date)); } return []; }
-async function quotes() { const r = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${encodeURIComponent(Object.values(IDS).join(","))}&vs_currencies=usd`, { headers: { Accept: "application/json" } }); if (!r.ok) throw Error(`CoinGecko quote fetch failed: ${r.status}`); const b = await r.json(), p: any = {}; for (const [s, id] of Object.entries(IDS)) { const v = Number((b as any)[id]?.usd); if (Number.isFinite(v)) p[s] = v; } const m = Object.keys(IDS).filter(s => !Number.isFinite(p[s])); if (m.length) throw Error(`CoinGecko returned incomplete quote set: ${m.join(",")}`); return p; }
+async function hist(allowedSymbols: Set<string>) { const r = await fetch(HISTORY, { headers: { Accept: "text/csv" } }); if (!r.ok) throw Error(`history fetch failed: ${r.status}`); const ls = (await r.text()).trim().split(/\r?\n/), h = ls[0].split(",").map(x => x.trim().toLowerCase()); if (h.includes("symbol") && h.includes("price")) { const di = h.indexOf("date"), ti = h.indexOf("time"), si = h.indexOf("symbol"), pi = h.indexOf("price"), fi = h.indexOf("fiat"), m = new Map<string, any>(); for (const line of ls.slice(1)) { const c = line.split(","), sym = String(c[si] || "").toUpperCase(), v = Number(c[pi]); if (!sym || !Number.isFinite(v) || !allowedSymbols.has(sym)) continue; const d = String(c[di] || ""); if (!d) continue; const tm = ti >= 0 ? String(c[ti] || "") : "00:00", fiat = fi >= 0 ? String(c[fi] || "USD") : "USD"; if (fiat.toUpperCase() !== "USD") continue; const key = `${d}T${tm}:00.000Z`; if (!m.has(key)) m.set(key, { date: key, prices: {} }); m.get(key).prices[sym] = v; } return [...m.values()].sort((a, b) => a.date.localeCompare(b.date)); } return []; }
+async function quotes(symbols: string[]) {
+  const unique = [...new Set(symbols.map((s) => String(s).toUpperCase()).filter(Boolean))];
+  if (!unique.length) return {};
+  const { data: assets, error } = await db.from("arbitrage_assets").select("symbol,cmc_id")
+    .in("symbol", unique).eq("enabled", true).eq("type", "CRYPTO").not("cmc_id", "is", null);
+  if (error) throw error;
+  const byId = new Map<number, string>();
+  for (const asset of assets || []) {
+    const id = Number(asset.cmc_id);
+    if (Number.isInteger(id) && id > 0) byId.set(id, String(asset.symbol).toUpperCase());
+  }
+  if (!byId.size) return {};
+  const ids = [...byId.keys()];
+  const url = `https://pro-api.coinmarketcap.com/public-api/v1/simple/price?ids=${ids.join(",")}&convert=USD`;
+  const response = await fetch(url, { headers: { Accept: "application/json" } });
+  if (!response.ok) throw Error(`CoinMarketCap quote fetch failed: ${response.status}`);
+  const payload = await response.json();
+  const prices: Record<string, number> = {};
+  for (const item of (Array.isArray(payload.data) ? payload.data : [])) {
+    const symbol = byId.get(Number(item.id));
+    const value = Number(item.price);
+    if (symbol && Number.isFinite(value) && value > 0) prices[symbol] = value;
+  }
+  return prices;
+}
 async function openTrades(uid: string | null) { let q = db.from("trades").select("id,user_id,arbitrage_id,arbitrage_name,anchor_symbol,strategy,opened_at,initial_anchor_amount,current_asset,current_quantity,entry_ratio_anchor_per_asset,entry_anchor_amount").is("closed_at", null); if (uid) q = q.eq("user_id", uid); const { data, error } = await q; if (error) throw error; return data || []; }
-async function userIdsForService() { const ids = new Set<string>(); const { data: states, error: se } = await db.from("hourly_arbitrage_state").select("user_id"); if (se) throw se; (states || []).forEach((r: any) => ids.add(r.user_id)); const { data: trades, error: te } = await db.from("trades").select("user_id"); if (te) throw te; (trades || []).forEach((r: any) => ids.add(r.user_id)); return [...ids]; }
+async function userIdsForService() {
+  const ids = new Set<string>();
+  const [states, trades, configs] = await Promise.all([
+    db.from("hourly_arbitrage_state").select("user_id"),
+    db.from("trades").select("user_id"),
+    db.from("arbitrage_configurations").select("user_id").eq("auto_monitoring_enabled", true)
+  ]);
+  if (states.error) throw states.error;
+  if (trades.error) throw trades.error;
+  if (configs.error) throw configs.error;
+  (states.data || []).forEach((r: any) => ids.add(r.user_id));
+  (trades.data || []).forEach((r: any) => ids.add(r.user_id));
+  (configs.data || []).forEach((r: any) => ids.add(r.user_id));
+  return [...ids];
+}
 
 Deno.serve(async req => {
   try {
@@ -123,23 +156,44 @@ Deno.serve(async req => {
     const body = await req.json().catch(() => ({})), requested = typeof body.user_id === "string" ? body.user_id : null;
     if (!a.service && requested && requested !== a.userId) return json({ ok: false, error: "user_id does not match authenticated user" }, 403);
     const users = a.service ? (requested ? [requested] : await userIdsForService()) : [a.userId!];
-    const at = hour(), [hs, prices] = await Promise.all([hist(), quotes()]);
-    const allTrades = await openTrades(requested || null), targetTrades = a.service && !requested ? allTrades.filter((t: any) => users.includes(t.user_id)) : allTrades;
+    const at = hour();
+    const allTrades = await openTrades(requested || null);
+    const targetTrades = a.service && !requested ? allTrades.filter((t: any) => users.includes(t.user_id)) : allTrades;
+    const { data: strategyRows, error: strategyError } = await db.from("arbitrage_configurations")
+      .select("id,user_id,name,anchor_symbol,comparative_symbols,default_lookback_days")
+      .in("user_id", users).eq("auto_monitoring_enabled", true);
+    if (strategyError) throw strategyError;
+    const strategies = strategyRows || [];
+    const requiredSymbols = new Set<string>();
+    for (const config of strategies) {
+      requiredSymbols.add(String(config.anchor_symbol).toUpperCase());
+      for (const symbol of (config.comparative_symbols || [])) requiredSymbols.add(String(symbol).toUpperCase());
+    }
+    for (const trade of targetTrades) {
+      requiredSymbols.add(String(trade.anchor_symbol).toUpperCase());
+      requiredSymbols.add(String(trade.current_asset).toUpperCase());
+    }
+    const symbols = [...requiredSymbols];
+    const [hs, prices] = await Promise.all([hist(new Set(symbols)), quotes(symbols)]);
     const [st, trs] = await Promise.all([db.from("hourly_arbitrage_state").select("*").in("user_id", users), db.from("hourly_trade_state").select("*").in("user_id", users)]);
     if (st.error) throw st.error; if (trs.error) throw trs.error;
     const pts = [...hs.filter((p: any) => p.date !== at), { date: at, prices }], sm = new Map((st.data || []).map((r: any) => [`${r.user_id}|${r.arbitrage_id}|${r.comparative_symbol}`, r])), tm = new Map((trs.data || []).map((r: any) => [`${r.user_id}|${r.trade_id}`, r])), events: any[] = [], obs: any[] = [], su: any[] = [], tu: any[] = [], previews: any[] = [];
-    for (const uid of users) for (const arbId of Object.keys(ARBS)) {
-      const c=ARBS[arbId];
-      for (const asset of c.comparatives) {
-        const rs=pts.map((p:any)=>ratio(p.prices,asset,c.anchor)).filter((x:any)=>x!==null); if(rs.length<LOOKBACK) continue;
-        const r=rs.at(-1),w=rs.slice(-LOOKBACK),avg=mean(w),stdev=sd(w),zs=stdev===0?0:(r-avg)/stdev,g=avg===0?null:r/avg-1,s=signal(zs),k=`${uid}|${arbId}|${asset}`,prev=sm.get(k),alerted=Boolean(prev?.buy_opportunity_alerted??false);
+    for (const uid of users) for (const c of strategies.filter((item: any) => item.user_id === uid)) {
+      const arbId = c.id;
+      const anchor = String(c.anchor_symbol).toUpperCase();
+      const lookback = Math.max(2, Number(c.default_lookback_days) || 60);
+      for (const rawAsset of (c.comparative_symbols || [])) {
+        const asset = String(rawAsset).toUpperCase();
+        if (!Number.isFinite(prices[anchor]) || !Number.isFinite(prices[asset])) continue;
+        const rs=pts.map((p:any)=>ratio(p.prices,asset,anchor)).filter((x:any)=>x!==null); if(rs.length<lookback) continue;
+        const r=rs.at(-1),w=rs.slice(-lookback),avg=mean(w),stdev=sd(w),zs=stdev===0?0:(r-avg)/stdev,g=avg===0?null:r/avg-1,s=signal(zs),k=`${uid}|${arbId}|${asset}`,prev=sm.get(k),alerted=Boolean(prev?.buy_opportunity_alerted??false);
         if(s==="BUY"&&!alerted){
-          const type="BUY_OPPORTUNITY",anchorPrice=Number(prices[c.anchor]),tokenPrice=Number(prices[asset]);
-          const message=formatMessage({type,comparative_symbol:asset,anchor_symbol:c.anchor,ratio:r,zscore:zs,evaluated_at:at,anchor_price_usd:anchorPrice,token_price_usd:tokenPrice});
-          if(message) previews.push({user_id:uid,evaluated_at:at,type,arbitrage_id:arbId,comparative_symbol:asset,trade_id:null,signal:"BUY",gap_pct:g,zscore:zs,profit_pct:null,threshold:null,email_subject:subjectFor(type,{anchor_symbol:c.anchor,comparative_symbol:asset}),message});
+          const type="BUY_OPPORTUNITY",anchorPrice=Number(prices[anchor]),tokenPrice=Number(prices[asset]);
+          const message=formatMessage({type,comparative_symbol:asset,anchor_symbol:anchor,ratio:r,zscore:zs,evaluated_at:at,anchor_price_usd:anchorPrice,token_price_usd:tokenPrice});
+          if(message) previews.push({user_id:uid,evaluated_at:at,type,arbitrage_id:arbId,comparative_symbol:asset,trade_id:null,signal:"BUY",gap_pct:g,zscore:zs,profit_pct:null,threshold:null,email_subject:subjectFor(type,{anchor_symbol:anchor,comparative_symbol:asset}),message});
         }
         const nextAlerted=s==="SELL"?false:s==="BUY"?true:alerted;
-        obs.push({user_id:uid,arbitrage_id:arbId,comparative_symbol:asset,anchor_symbol:c.anchor,evaluated_at:at,snapshot_at:at,ratio:r,avg,stdev,zscore:zs,signal:s,gap_pct:g});
+        obs.push({user_id:uid,arbitrage_id:arbId,comparative_symbol:asset,anchor_symbol:anchor,evaluated_at:at,snapshot_at:at,ratio:r,avg,stdev,zscore:zs,signal:s,gap_pct:g});
         su.push({user_id:uid,arbitrage_id:arbId,comparative_symbol:asset,signal:s,gap_pct:g,zscore:zs,gap_threshold_alerted:null,cycle_started_at:s==="SELL"?at:(prev?.cycle_started_at??(s==="BUY"?at:null)),buy_opportunity_alerted:nextAlerted,evaluated_at:at,updated_at:at});
       }
     }

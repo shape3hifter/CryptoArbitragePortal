@@ -45,6 +45,7 @@ main{max-width:1180px;margin:0 auto;padding:28px 20px 60px}.top{display:flex;jus
   <div class="view-nav" role="tablist" aria-label="Seções do portal">
     <button id="tabArbitragens" class="view-tab active" type="button">Arbitragens</button>
     <button id="tabAtivos" class="view-tab" type="button">Ativos</button>
+    <button id="tabConfiguracoes" class="view-tab" type="button">Configurações</button>
   </div>
 
   <section id="assetsView" class="view-panel hidden">
@@ -77,6 +78,43 @@ main{max-width:1180px;margin:0 auto;padding:28px 20px 60px}.top{display:flex;jus
     <div class="card section">
       <div class="section-head"><h2>Biblioteca cadastrada</h2><div class="note">Histórico local ≥ 120 dias = utilizável estatisticamente</div></div>
       <div id="assetLibrary" class="asset-grid"></div>
+    </div>
+  </section>
+
+
+  <section id="configurationView" class="view-panel hidden">
+    <div class="card">
+      <div class="section-head">
+        <div><h2>Configurações</h2><div class="assets-note">Gerencie as arbitragens permanentes compartilhadas com o motor automático.</div></div>
+        <button id="newConfigurationBtn" class="btn primary" type="button">+ Nova arbitragem</button>
+      </div>
+      <div id="configAccessStatus" class="config-access-status">Conectando ao Supabase…</div>
+      <div id="configurationList" class="config-list"><div class="config-empty">Carregando configurações…</div></div>
+    </div>
+
+    <div id="configurationEditor" class="card section hidden">
+      <div class="section-head">
+        <div><h2 id="configEditorTitle">Nova arbitragem</h2><div class="assets-note">As alterações salvas aqui são permanentes.</div></div>
+      </div>
+      <form id="configForm">
+        <div class="config-form-grid">
+          <div class="field wide"><label for="configName">Nome da arbitragem</label><input id="configName" maxlength="80" required placeholder="Ex.: ADA / NIGHT / SNEK"></div>
+          <div class="field"><label for="configReferenceUnit">Unidade de referência</label><select id="configReferenceUnit" required></select></div>
+          <div class="field"><label for="configAnchor">Crypto Anchor</label><select id="configAnchor" required></select></div>
+          <div class="field"><label for="configLookback">Janela estatística padrão</label><select id="configLookback" required></select></div>
+          <div class="field wide"><label>Comparativos padrão · 2 a 5</label><div id="configComparatives" class="config-comparatives"></div></div>
+          <div class="field wide">
+            <label class="config-monitor-label"><input id="configAutoMonitoring" type="checkbox"> Monitoramento automático ligado</label>
+            <div class="assets-note">Novas arbitragens começam desligadas. Só será possível ativar quando os dados e os ativos estiverem tecnicamente aptos.</div>
+          </div>
+        </div>
+        <div id="configFormReadiness" class="config-form-readiness">Verificando dados…</div>
+        <div class="actions">
+          <button id="configSaveBtn" class="btn primary" type="submit">Salvar configuração</button>
+          <button id="configCancelBtn" class="btn" type="button">Cancelar</button>
+          <button id="configDeleteBtn" class="btn config-delete hidden" type="button">Remover arbitragem</button>
+        </div>
+      </form>
     </div>
   </section>
 
@@ -143,6 +181,7 @@ let rows=[];
 let assetCatalog={};
 let arbitrages=[];
 let activeArbitrageId='';
+let analysisDrafts={};
 let captureLog=null;
 let temporarySnapshot=null;
 let liveInFlight=false;
@@ -223,19 +262,17 @@ function migrateModel(){
   settings.lookback=Number(active.lookback)||60;
 }
 function syncActiveArbitrageFromSettings(){
-  if(!arbitrages.length||!activeArbitrageId)return;
-  const a=arbitrages.find(x=>x.id===activeArbitrageId)||arbitrages[0];
-  a.referenceUnit=settings.fiat||'USD';
-  a.anchor=settings.anchor||'ADA';
-  a.comparativesDefault=[...new Set((settings.comps||[]).map(String).map(x=>x.toUpperCase()).filter(x=>x!==a.anchor))];
-  a.lookback=Number(settings.lookback)||60;
-  a.name=a.name||`${a.anchor} / ${a.comparativesDefault.join(' / ')}`;
-  activeArbitrageId=a.id;
-  if(!assetCatalog[a.anchor]) assetCatalog[a.anchor]=defaultAsset(a.anchor);
-  for(const c of a.comparativesDefault){if(!assetCatalog[c])assetCatalog[c]=defaultAsset(c);}
+  if(!activeArbitrageId)return;
+  analysisDrafts[activeArbitrageId]={
+    fiat:settings.fiat||'USD',
+    anchor:settings.anchor||'ADA',
+    comps:[...(settings.comps||[])],
+    lookback:Number(settings.lookback)||60
+  };
 }
 function saveModel(){
   localStorage.setItem(MODEL_KEY,JSON.stringify({version:MODEL_VERSION,baseCurrency:'USD',assetCatalog,arbitrages,activeArbitrageId,seededRows}));
+  window.dispatchEvent(new Event('cryptoArbModelSaved'));
 }
 function loadModel(){
   try{
@@ -338,23 +375,23 @@ function mergeRemoteWithSeed(remote){
   return [...map.values()].sort((a,b)=>(a.date+' '+a.time).localeCompare(b.date+' '+b.time)||a.symbol.localeCompare(b.symbol));
 }
 function ensureSettings(){const available=cryptoAssets(); if(!available.includes(settings.anchor))settings.anchor=available[0]||'ADA'; settings.comps=settings.comps.filter(x=>x!==settings.anchor&&available.includes(x)); if(settings.comps.length<2) settings.comps=available.filter(x=>x!==settings.anchor).slice(0,2); syncActiveArbitrageFromSettings();}
-function saveLocal(){syncActiveArbitrageFromSettings(); localStorage.setItem(DATA_KEY,JSON.stringify(rows));localStorage.setItem(SETTINGS_KEY,JSON.stringify(settings));saveModel()}
-function loadLocal(){try{const d=JSON.parse(localStorage.getItem(DATA_KEY)||'null');if(Array.isArray(d)&&d.length)rows=d;const s=JSON.parse(localStorage.getItem(SETTINGS_KEY)||'null');if(s)settings={...settings,...s}}catch(e){} loadModel();}
+function saveLocal(){syncActiveArbitrageFromSettings(); localStorage.setItem(DATA_KEY,JSON.stringify(rows));saveModel()}
+function loadLocal(){try{const d=JSON.parse(localStorage.getItem(DATA_KEY)||'null');if(Array.isArray(d)&&d.length)rows=d;}catch(e){} loadModel();}
 function activeArbitrage(){return arbitrages.find(a=>a.id===activeArbitrageId)||arbitrages[0]||null}
 function ensureActiveArbitrage(){
   if(!Array.isArray(arbitrages) || !arbitrages.length) migrateModel();
   if(!activeArbitrageId || !arbitrages.some(a=>a.id===activeArbitrageId)) activeArbitrageId=arbitrages[0]?.id||null;
   const a=activeArbitrage();
   if(a){
-    settings.fiat=a.referenceUnit||settings.fiat||'USD';
-    settings.anchor=a.anchor||settings.anchor||'ADA';
-    settings.comps=[...(a.comparativesDefault||[])];
-    settings.lookback=Number(a.lookback)||60;
+    const draft=analysisDrafts[a.id];
+    settings.fiat=draft?.fiat||a.referenceUnit||'USD';
+    settings.anchor=draft?.anchor||a.anchor||'ADA';
+    settings.comps=[...(draft?.comps||a.comparativesDefault||[])];
+    settings.lookback=Number(draft?.lookback||a.lookback)||60;
   }
 }
 function renderArbitrageSelector(){
   const select=$('arbitrageSelect'); if(!select)return;
-  ensureActiveArbitrage();
   const active=activeArbitrage();
   const options=arbitrages.map(a=>`<option value="${a.id}">${a.name}</option>`).join('');
   select.innerHTML=options||'<option value="">Nenhuma arbitragem</option>';
@@ -366,10 +403,11 @@ function renderArbitrageSelector(){
 }
 function applyActiveArbitrage(){
   const active=activeArbitrage(); if(!active)return;
-  settings.fiat=active.referenceUnit||'USD';
-  settings.anchor=active.anchor||'ADA';
-  settings.comps=[...active.comparativesDefault];
-  settings.lookback=Number(active.lookback)||60;
+  const draft=analysisDrafts[active.id];
+  settings.fiat=draft?.fiat||active.referenceUnit||'USD';
+  settings.anchor=draft?.anchor||active.anchor||'ADA';
+  settings.comps=[...(draft?.comps||active.comparativesDefault||[])];
+  settings.lookback=Number(draft?.lookback||active.lookback)||60;
   temporarySnapshot=null;
   invalidateAnalysisCache();
   updateLiveStatus();
@@ -403,7 +441,20 @@ function renderAssetsView(){
   }).join('');
   list.querySelectorAll('[data-asset-action]').forEach(btn=>btn.addEventListener('click',()=>handleAssetAction(btn.dataset.assetAction,btn.dataset.symbol)));
 }
-function setView(view){currentView=view;const isAssets=view==='ativos';$('arbitragesView').classList.toggle('hidden',isAssets);$('assetsView').classList.toggle('hidden',!isAssets);$('tabArbitragens').classList.toggle('active',!isAssets);$('tabAtivos').classList.toggle('active',isAssets);if(isAssets)renderAssetsView();else{ensureActiveArbitrage();populateControls();render();updateCaptureStatus();}}
+function setView(view){
+  currentView=view;
+  const isAssets=view==='ativos', isConfig=view==='configuracoes', isArbitrages=view==='arbitragens';
+  $('arbitragesView').classList.toggle('hidden',!isArbitrages);
+  $('assetsView').classList.toggle('hidden',!isAssets);
+  $('configurationView').classList.toggle('hidden',!isConfig);
+  $('tabArbitragens').classList.toggle('active',isArbitrages);
+  $('tabAtivos').classList.toggle('active',isAssets);
+  $('tabConfiguracoes').classList.toggle('active',isConfig);
+  if(isAssets) renderAssetsView();
+  else if(isConfig) window.cryptoArbRenderConfigurations?.();
+  else {populateControls();render();updateCaptureStatus();}
+}
+window.setPortalView=setView;
 let editingAssetSymbol=null;
 function startEditAsset(symbol){
   const a=assetCatalog[symbol]; if(!a) return;
@@ -539,7 +590,7 @@ async function loadAssetHistory(symbol){
   finally{renderAssetsView();}
 }
 async function handleAssetAction(action,symbol){if(action==='edit')startEditAsset(symbol);else if(action==='toggle')toggleAsset(symbol);else if(action==='load')await loadAssetHistory(symbol);else if(action==='load-fiat')await loadFiatHistory(symbol);}
-function populateControls(){ensureSettings(); renderArbitrageSelector(); const fiat=$('fiat'); const lookback=$('lookback'); const asof=$('asof'); const anchor=$('anchor'); if(fiat)fiat.value=settings.fiat; if(lookback)lookback.value=String(settings.lookback); if(asof){const iso=latestOfficialSnapshotISO(); asof.dataset.iso=iso; asof.textContent=iso?formatSnapshotBR(iso):'—';} if(anchor){anchor.innerHTML=cryptoAssets().map(a=>`<option>${a}</option>`).join(''); anchor.value=settings.anchor;} renderChecks();}
+function populateControls(){ensureSettings(); renderArbitrageSelector(); const fiat=$('fiat'); const lookback=$('lookback'); const asof=$('asof'); const anchor=$('anchor'); if(fiat){const unitAssets=Object.entries(assetCatalog).filter(([s,a])=>a&&a.enabled!==false).map(([s])=>s).sort((a,b)=>a.localeCompare(b)); if(!unitAssets.includes(settings.fiat))unitAssets.push(settings.fiat); fiat.innerHTML=unitAssets.map(s=>`<option value="${s}">${s}</option>`).join(''); fiat.value=settings.fiat;} if(lookback)lookback.value=String(settings.lookback); if(asof){const iso=latestOfficialSnapshotISO(); asof.dataset.iso=iso; asof.textContent=iso?formatSnapshotBR(iso):'—';} if(anchor){anchor.innerHTML=cryptoAssets().map(a=>`<option>${a}</option>`).join(''); anchor.value=settings.anchor;} renderChecks();}
 function renderChecks(){const arr=cryptoAssets().filter(a=>a!==settings.anchor); $('checks').innerHTML=arr.map(a=>`<label><input type="checkbox" data-comp="${a}" ${settings.comps.includes(a)?'checked':''}> ${a}</label>`).join(''); $('checks').querySelectorAll('input').forEach(i=>i.addEventListener('change',()=>{let next=[...$('checks').querySelectorAll('input:checked')].map(x=>x.dataset.comp); if(next.length<2){i.checked=true;return} if(next.length>5){i.checked=false;return} settings.comps=next; syncActiveArbitrageFromSettings(); invalidateAnalysisCache(); render();}));}
 function renderEntryFields(){const host=$('entryFields'); if(!host)return; const syms=[settings.anchor,...settings.comps]; host.innerHTML=syms.map(s=>`<div class="field" style="margin-top:8px"><label for="q_${s}">${s} — preço em ${settings.fiat} às 21:00</label><input id="q_${s}" type="number" step="any" inputmode="decimal" placeholder="Ex.: 0.1932"></div>`).join('')}
 function drawChart(svgId,datasets,thresholds){const svg=$(svgId); svg.innerHTML=''; const W=900,H=300,p={l:48,r:18,t:14,b:32}, x0=p.l,x1=W-p.r,y0=H-p.b,y1=p.t; const vals=datasets.flatMap(d=>d.values.filter(Number.isFinite)); if(!vals.length){svg.innerHTML='<text x="450" y="150" text-anchor="middle" fill="#9eb0d1">Sem dados suficientes</text>';return} let min=Math.min(...vals),max=Math.max(...vals); if(thresholds)for(const t of thresholds){min=Math.min(min,t);max=Math.max(max,t)} let span=max-min||1;min-=span*.08;max+=span*.08; const n=Math.max(...datasets.map(d=>d.values.length)); const x=i=>x0+(i/Math.max(1,n-1))*(x1-x0), y=v=>y0-((v-min)/(max-min))*(y0-y1); for(let i=0;i<4;i++){const yy=y0-(i/3)*(y0-y1);const l=line(x0,yy,x1,yy,'#2b3857',1);svg.appendChild(l)} if(thresholds)for(const t of thresholds){const l=line(x0,y(t),x1,y(t),'#7b89a8',1,'5 5');svg.appendChild(l);const tx=text(8,y(t)+4,'#9eb0d1',11,String(t));svg.appendChild(tx)} datasets.forEach((ds,j)=>{const pts=ds.values.map((v,i)=>Number.isFinite(v)?`${x(i)},${y(v)}`:null).filter(Boolean).join(' ');const poly=document.createElementNS('http://www.w3.org/2000/svg','polyline');poly.setAttribute('points',pts);poly.setAttribute('fill','none');poly.setAttribute('stroke',j%2?'var(--series2)':'var(--accent)');poly.setAttribute('stroke-width','2.2');svg.appendChild(poly)}); [0,Math.floor(n/2),n-1].forEach((i,j)=>{if(i<0)return;const t=text(x(i),H-9,'#9eb0d1',11,j===0?'start':j===2?'end':'middle',niceDate(datasets[0].dates[i]||''));svg.appendChild(t)});}
@@ -571,6 +622,7 @@ async function refreshRemoteData(){
     maybeClearTemporaryAfterRemote();
     $('automationStatus').textContent='Base remota sincronizada a partir do data.csv do GitHub. A coleta é feita pelo GitHub Actions.';
   }
+  window.dispatchEvent(new Event('cryptoArbDataUpdated'));
   return dataOk;
 }
 async function loadCaptureLog(){
@@ -713,15 +765,120 @@ function renderTable(analysisPoints=priceMap()){
 function latestDateForAsset(a){const d=calcAt(a);return d[d.length-1]||null;}
 
 async function loadDemo(){rows=DEMO_DATA.map(r=>({...r})); invalidateAnalysisCache(); saveLocal();}
-$('arbitrageSelect').addEventListener('change',e=>{ activeArbitrageId=e.target.value; applyActiveArbitrage(); invalidateAnalysisCache(); saveModel(); populateControls(); render(); updateCaptureStatus(); });
+$('arbitrageSelect').addEventListener('change',e=>{ syncActiveArbitrageFromSettings(); activeArbitrageId=e.target.value; applyActiveArbitrage(); invalidateAnalysisCache(); saveModel(); populateControls(); render(); updateCaptureStatus(); });
 $('tabArbitragens').addEventListener('click',()=>setView('arbitragens'));
 $('tabAtivos').addEventListener('click',()=>setView('ativos'));
+$('tabConfiguracoes').addEventListener('click',()=>setView('configuracoes'));
 $('addAssetBtn').addEventListener('click',addAsset);
 $('clearAssetFormBtn').addEventListener('click',clearAssetForm);
 $('newAssetType').addEventListener('change',()=>{const type=$('newAssetType').value;$('newAssetCmcId').disabled=type==='FIAT';if(type==='FIAT')$('newAssetCmcId').value='';});
 $('fiat')?.addEventListener('change',e=>{settings.fiat=e.target.value;syncActiveArbitrageFromSettings();invalidateAnalysisCache();saveModel();render()}); $('anchor')?.addEventListener('change',e=>{settings.anchor=e.target.value;settings.comps=cryptoAssets().filter(a=>a!==settings.anchor).slice(0,Math.min(2,cryptoAssets().length-1));syncActiveArbitrageFromSettings();invalidateAnalysisCache();saveModel();render()}); $('lookback')?.addEventListener('change',e=>{settings.lookback=Number(e.target.value);syncActiveArbitrageFromSettings();invalidateAnalysisCache();saveModel();render()}); 
 $('liveBtn').addEventListener('click',fetchLivePrices);
 setInterval(async()=>{if(temporarySnapshot){const today21=new Date();today21.setHours(21,0,0,0);if(new Date()>=today21){await refreshRemoteData();maybeClearTemporaryAfterRemote();}}},5*60*1000);
+
+
+window.cryptoArbitrageGetAssets=()=>assetCatalog;
+window.cryptoArbitrageGetConfigurations=()=>arbitrages;
+window.cryptoArbitrageGetActiveConfig=()=>activeArbitrage();
+window.cryptoArbitrageGetActiveConfigId=()=>activeArbitrageId;
+window.cryptoArbitrageMergeAssets=(remoteRows)=>{
+  for(const row of (remoteRows||[])){
+    const symbol=String(row.symbol||'').toUpperCase();
+    if(!symbol)continue;
+    const current=assetCatalog[symbol];
+    if(!current){
+      assetCatalog[symbol]={symbol,name:row.name||symbol,type:row.type||'CRYPTO',cmc_id:row.cmc_id||null,enabled:row.enabled!==false,base_quote:row.base_quote||'USD'};
+    }else{
+      if(!current.name||current.name===symbol)current.name=row.name||symbol;
+      if(current.cmc_id==null&&row.cmc_id!=null)current.cmc_id=Number(row.cmc_id);
+      if(current.enabled===undefined)current.enabled=row.enabled!==false;
+      if(!current.type)current.type=row.type||'CRYPTO';
+      if(!current.base_quote)current.base_quote=row.base_quote||'USD';
+    }
+  }
+  saveModel();
+};
+window.cryptoArbitrageReplaceConfigurations=(list,resetDraftId=null)=>{
+  const previousId=activeArbitrageId;
+  syncActiveArbitrageFromSettings();
+  arbitrages=(list||[]).map(a=>({
+    id:a.id,name:a.name,referenceUnit:a.referenceUnit||'USD',
+    anchor:a.anchor||'ADA',comparativesDefault:[...(a.comparativesDefault||[])],
+    lookback:Number(a.lookback)||60,autoMonitoringEnabled:Boolean(a.autoMonitoringEnabled),
+    active:true
+  }));
+  if(resetDraftId)delete analysisDrafts[resetDraftId];
+  if(!arbitrages.some(a=>a.id===activeArbitrageId))activeArbitrageId=arbitrages[0]?.id||'';
+  if(previousId!==activeArbitrageId||resetDraftId===activeArbitrageId)applyActiveArbitrage();
+  saveModel();
+  renderArbitrageSelector();
+  populateControls();
+  render();
+};
+window.cryptoArbitrageSelectConfiguration=(id)=>{
+  syncActiveArbitrageFromSettings();
+  if(!arbitrages.some(a=>a.id===id))return;
+  activeArbitrageId=id;
+  applyActiveArbitrage();
+  saveModel();
+  populateControls();
+  render();
+  updateCaptureStatus();
+};
+window.cryptoArbitrageGetReadiness=(config)=>{
+  const cfg=config||activeArbitrage();
+  if(!cfg)return {analysisReady:false,monitorReady:false,message:'Arbitragem não cadastrada.'};
+  const anchor=String(cfg.anchor||cfg.anchor_symbol||'').toUpperCase();
+  const comps=(cfg.comparativesDefault||cfg.comparative_symbols||[]).map(x=>String(x).toUpperCase());
+  const ref=String(cfg.referenceUnit||cfg.reference_unit||'USD').toUpperCase();
+  const lookback=Number(cfg.lookback||cfg.default_lookback_days)||60;
+  const catalog=assetCatalog;
+  const missing=[],unsupported=[];
+  for(const symbol of [anchor,...comps]){
+    const asset=catalog[symbol];
+    if(!asset||asset.enabled===false)missing.push(symbol+' (não habilitado no catálogo)');
+    else if(asset.type!=='CRYPTO')missing.push(symbol+' (não é cripto)');
+    else if(!Number.isInteger(Number(asset.cmc_id))||Number(asset.cmc_id)<=0)unsupported.push(symbol+' (sem CoinMarketCap ID)');
+  }
+  if(ref!=='USD'&&(!catalog[ref]||catalog[ref].enabled===false))missing.push(ref+' (unidade de referência indisponível)');
+  const refRates=ref==='USD'?null:rows.filter(r=>String(r.symbol||'').toUpperCase()===ref&&String(r.fiat||'USD').toUpperCase()==='USD'&&Number(r.price)>0)
+    .map(r=>({key:r.date+'T'+(r.time||'21:00'),price:Number(r.price)})).sort((a,b)=>a.key.localeCompare(b.key));
+  const points=new Map();
+  for(const r of rows){
+    if(String(r.fiat||'USD').toUpperCase()!=='USD'||!(Number(r.price)>0))continue;
+    const key=r.date+'T'+(r.time||'21:00');
+    if(!points.has(key))points.set(key,{});
+    points.get(key)[String(r.symbol||'').toUpperCase()]=Number(r.price);
+  }
+  const keys=[...points.keys()].sort();
+  const insufficient=[];
+  for(const comp of comps){
+    let count=0,lastKey=null;
+    for(const key of keys){
+      const p=points.get(key);
+      if(!(Number(p[anchor])>0&&Number(p[comp])>0))continue;
+      if(ref!=='USD'){
+        let rate=null;
+        for(const candidate of refRates||[]){if(candidate.key<=key)rate=candidate.price;else break;}
+        if(!(Number(rate)>0))continue;
+      }
+      count++;lastKey=key;
+    }
+    if(count<lookback)insufficient.push(comp+': '+count+'/'+lookback+' observações alinhadas');
+    else if(lastKey){
+      const lastDate=new Date(lastKey+':00-03:00');
+      if(Number.isFinite(lastDate.getTime())&&(Date.now()-lastDate.getTime())>4*86400000)insufficient.push(comp+': histórico desatualizado');
+    }
+  }
+  const analysisReady=missing.length===0&&insufficient.length===0&&comps.length>=2&&comps.length<=5;
+  const monitorReady=analysisReady&&unsupported.length===0;
+  let message='Pronta para análise e monitoramento.';
+  if(missing.length)message='Ativos indisponíveis: '+missing.join(', ')+'.';
+  else if(insufficient.length)message='Histórico insuficiente: '+insufficient.join('; ')+'.';
+  else if(unsupported.length)message='Dados de mercado indisponíveis para monitoramento: '+unsupported.join(', ')+'.';
+  else if(ref!=='USD'&&(!refRates||!refRates.length))message='Histórico de conversão indisponível para '+ref+'.';
+  return {analysisReady,monitorReady,message,unsupported,missing,insufficient};
+};
 
 function applyFreshStartReset(){
   try{
@@ -737,8 +894,10 @@ function applyFreshStartReset(){
   loadLocal();
   syncKnownAssetMetadata();
   migrateModel();
-  ensureActiveArbitrage();
+  if(window.cryptoArbConfigInit) await window.cryptoArbConfigInit();
   syncKnownAssetMetadata();
+  migrateModel();
+  ensureActiveArbitrage();
   saveModel();
   populateControls();
   renderArbitrageSelector();

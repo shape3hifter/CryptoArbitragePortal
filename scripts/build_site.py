@@ -8,6 +8,7 @@ SOURCE_INDEX=ROOT/'index.html'
 TRADES_UI_JS=ROOT/'trades-ui.js'
 RUNTIME_FIXES_JS=ROOT/'runtime-fixes.js'
 SUPABASE_CONFIG=ROOT/'supabase'/'config.js'
+ARBITRAGE_CONFIG_JS=ROOT/'arbitrage-config.js'
 TRADES_MARKUP=r'''
 <section class="card trades-card" id="tradesPanel">
  <div class="section-head"><div><h2>Trades</h2><div class="note" id="tradesContext">Acompanhamento da arbitragem selecionada</div></div>
@@ -60,11 +61,12 @@ TRADES_MARKUP=r'''
 })();
 </script>
 <script src="supabase/config.js"></script>
+<script src="arbitrage-config.js?v=20261030-1"></script>
 <script src="trades-ui.js?v=20261008-1"></script>
 <script src="runtime-fixes.js?v=20261004-7"></script>
 '''
 def build():
- if not SOURCE_INDEX.exists() or not TRADES_UI_JS.exists() or not RUNTIME_FIXES_JS.exists() or not SUPABASE_CONFIG.exists(): raise SystemExit('Arquivos necessários não encontrados')
+ if not SOURCE_INDEX.exists() or not TRADES_UI_JS.exists() or not RUNTIME_FIXES_JS.exists() or not SUPABASE_CONFIG.exists() or not ARBITRAGE_CONFIG_JS.exists(): raise SystemExit('Arquivos necessários não encontrados')
  if DIST.exists(): shutil.rmtree(DIST)
  DIST.mkdir(parents=True)
  for name in ['index.html','data.csv','capture-log.json','config.json']:
@@ -73,6 +75,7 @@ def build():
  for p in ROOT.glob('favicon*'):
   if p.is_file(): shutil.copy2(p,DIST/p.name)
  shutil.copy2(TRADES_UI_JS,DIST/'trades-ui.js')
+ shutil.copy2(ARBITRAGE_CONFIG_JS,DIST/'arbitrage-config.js')
  shutil.copy2(RUNTIME_FIXES_JS,DIST/'runtime-fixes.js')
  (DIST/'supabase').mkdir(); shutil.copy2(SUPABASE_CONFIG,DIST/'supabase'/'config.js')
  html=SOURCE_INDEX.read_text(encoding='utf-8')

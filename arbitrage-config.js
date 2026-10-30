@@ -83,7 +83,7 @@
   async function loadAssetCatalog() {
     const { data, error } = await client
       .from('arbitrage_assets')
-      .select('symbol,name,type,cmc_id,enabled,base_quote,user_id')
+      .select('symbol,name,type,cmc_id,enabled,base_quote')
       .order('symbol');
     if (error) throw error;
     window.cryptoArbitrageMergeAssets?.(data || []);
@@ -357,11 +357,12 @@
     originalEdit = null;
   }
 
-  async function loadAuthenticatedData() {
+  async function loadAuthenticatedData(resetInitialDraft = false) {
     if (!client || !session) return;
     status('Sincronizando configurações e catálogo…');
     await loadAssetCatalog();
-    await loadConfigurations();
+    const resetDraftId = resetInitialDraft ? (window.cryptoArbitrageGetActiveConfigId?.() || null) : null;
+    await loadConfigurations(resetDraftId);
     renderList();
     status('Configurações sincronizadas com o Supabase.', 'good');
   }
@@ -383,7 +384,7 @@
           status('Sessão encerrada. Entre novamente pelo painel de Trades.', 'warn');
         }
       });
-      if (session) await loadAuthenticatedData();
+      if (session) await loadAuthenticatedData(true);
       else {
         renderList();
         status('Faça login pelo painel de Trades para administrar configurações.', 'warn');
@@ -394,12 +395,50 @@
     }
   }
 
+
+  function addStyles() {
+    if ($('arbitrage-config-styles')) return;
+    const style = document.createElement('style');
+    style.id = 'arbitrage-config-styles';
+    style.textContent = `
+      .config-access-status{font-size:12px;color:var(--muted);margin:10px 0 14px;min-height:18px}
+      .config-access-status.good,.config-form-readiness.good,.config-row-status.good{color:#4ade80}
+      .config-access-status.warn,.config-form-readiness.warn,.config-row-status.warn{color:#fbbf24}
+      .config-list{display:grid;gap:10px}
+      .config-row{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;padding:14px;border:1px solid var(--border);border-radius:14px;background:var(--panel2)}
+      .config-row-main{min-width:0;flex:1}
+      .config-row-title{font-size:15px;font-weight:700;margin-bottom:5px}
+      .config-row-detail{font-size:12px;color:var(--muted);line-height:1.6}
+      .config-row-status{font-size:12px;margin-top:7px}
+      .config-row-actions{display:flex;align-items:center;justify-content:flex-end;gap:7px;flex-wrap:wrap;max-width:440px}
+      .config-pill{font-size:11px;border-radius:999px;padding:6px 9px;border:1px solid var(--border);white-space:nowrap}
+      .config-pill.on{color:#4ade80;border-color:rgba(74,222,128,.35)}
+      .config-pill.off{color:var(--muted)}
+      .config-delete{border-color:rgba(248,113,113,.3)}
+      .config-empty{padding:18px;border:1px dashed var(--border);border-radius:12px;color:var(--muted);font-size:13px;line-height:1.6}
+      .config-form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+      .config-form-grid .wide{grid-column:1/-1}
+      .config-form-grid input:not([type=checkbox]),.config-form-grid select{width:100%;box-sizing:border-box}
+      .config-comparatives{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:8px;padding:10px;border:1px solid var(--border);border-radius:12px;max-height:240px;overflow:auto}
+      .config-check{display:flex;align-items:center;gap:8px;font-size:12px;padding:5px}
+      .config-check input,.config-monitor-label input{width:auto}
+      .config-monitor-label{display:flex;align-items:center;gap:9px;font-size:13px;font-weight:600}
+      .config-form-readiness{font-size:12px;line-height:1.6;margin:12px 0;padding:10px 12px;border:1px solid var(--border);border-radius:10px;background:var(--panel2)}
+      @media(max-width:720px){.config-row{display:block}.config-row-actions{justify-content:flex-start;margin-top:12px;max-width:none}.config-form-grid{grid-template-columns:1fr}.config-form-grid .wide{grid-column:auto}}
+    `;
+    document.head.appendChild(style);
+  }
+
   function bind() {
+    addStyles();
     $('newConfigurationBtn')?.addEventListener('click', () => openEditor());
     $('configForm')?.addEventListener('submit', saveConfiguration);
     $('configCancelBtn')?.addEventListener('click', closeEditor);
     $('configDeleteBtn')?.addEventListener('click', () => editId && removeConfiguration(editId));
-    $('configAnchor')?.addEventListener('change', () => renderComparativeChoices([]));
+    $('configAnchor')?.addEventListener('change', () => {
+      const selected = [...$('configComparatives').querySelectorAll('input:checked')].map((x) => x.value);
+      renderComparativeChoices(selected.filter((symbol) => symbol !== $('configAnchor').value));
+    });
     $('configAnchor')?.addEventListener('change', updateFormReadiness);
     ['configReferenceUnit', 'configLookback', 'configAutoMonitoring', 'configName'].forEach((id) =>
       $(id)?.addEventListener('change', updateFormReadiness));

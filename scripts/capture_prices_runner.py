@@ -40,8 +40,8 @@ def parse_args() -> argparse.Namespace:
 
 
 def load_config() -> dict:
-    import json
-    return json.loads(CONFIG.read_text(encoding="utf-8"))
+    # Share the same canonical Supabase asset catalog as capture_prices.py.
+    return capture.load_config()
 
 
 def parse_clock(value: str) -> dt_time:
