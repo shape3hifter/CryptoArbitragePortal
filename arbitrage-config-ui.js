@@ -343,6 +343,7 @@
         await request('/rest/v1/arbitrage_configurations?id=eq.'+encodeURIComponent(old.id)+'&user_id=eq.'+encodeURIComponent(ctx.userId), {
           method:'PATCH', headers:{Prefer:'return=representation'}, body:JSON.stringify(row)
         });
+        window.cryptoArbitrageClearAnalysisDraft?.(old.id);
       } else {
         row.id = 'arb-' + crypto.randomUUID().toLowerCase();
         row.user_id = ctx.userId;
