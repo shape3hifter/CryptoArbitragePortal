@@ -51,13 +51,13 @@ def parse_clock(value: str) -> dt_time:
     return datetime.strptime(value, "%H:%M").time()
 
 
-def load_configured_assets(config: dict) -> tuple[list[dict], str]:
-    """Prefer Supabase asset catalog; retain config.json as fallback."""
+def load_configured_assets(_config: dict) -> tuple[list[dict], str]:
+    """Load the enabled asset catalog from Supabase; never use a local asset list."""
     config_js = ROOT / "supabase" / "config.js"
     try:
         source = config_js.read_text(encoding="utf-8")
-        url_match = re.search(r"url\s*:\s*[\'\"]([^\'\"]+)[\'\"]", source)
-        key_match = re.search(r"anonKey\s*:\s*[\'\"]([^\'\"]+)[\'\"]", source)
+        url_match = re.search(r"url\\s*:\\s*['\\"]([^'\\"]+)['\\"]", source)
+        key_match = re.search(r"anonKey\\s*:\\s*['\\"]([^'\\"]+)['\\"]", source)
         if not url_match or not key_match:
             raise RuntimeError("Supabase public client config not found")
         query = urlencode({"select": "symbol,name,type,cmc_id,enabled", "enabled": "eq.true", "order": "symbol.asc"})
@@ -72,13 +72,7 @@ def load_configured_assets(config: dict) -> tuple[list[dict], str]:
             raise RuntimeError("Supabase asset catalog is empty")
         return assets, "supabase"
     except Exception as exc:
-        fallback = [a for a in config.get("assets", []) if str(a.get("symbol", "")).upper() != "USD"]
-        if not fallback:
-            raise RuntimeError(f"Unable to load Supabase assets and config.json fallback is empty: {exc}")
-        print(f"WARNING: Supabase asset catalog unavailable; using config.json fallback: {exc}", file=sys.stderr)
-        return fallback, "config.json"
-
-
+        raise RuntimeError(f"Unable to load central Supabase asset catalog: {exc}") from exc
 
 def http_json(url: str, *, retries: int = 4, timeout: int = 25):
     last_exc = None
