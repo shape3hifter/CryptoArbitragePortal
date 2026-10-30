@@ -432,7 +432,7 @@ function checkArbitrageReadiness(cfg){
   const comps=[...(cfg.comparativesDefault||[])].map(x=>String(x).toUpperCase());
   const lookback=Number(cfg.lookback)||60;
   const ref=String(cfg.referenceUnit||'USD').toUpperCase();
-  const valid=rows.filter(r=>r.fiat==='USD'&&Number(r.price)>0&&r.date&&r.symbol);
+  const valid=rows.filter(r=>String(r.fiat||'USD').toUpperCase()==='USD'&&Number.isFinite(Number(r.price))&&Number(r.price)>0&&r.date&&r.symbol);
   const datesFor=s=>new Set(valid.filter(r=>String(r.symbol).toUpperCase()===s).map(r=>r.date+'T'+(r.time||'21:00')));
   const anchorDates=datesFor(anchor);
   const reasons=[];
