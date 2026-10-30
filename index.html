@@ -262,6 +262,25 @@ function loadModel(){
 function modelSummary(){return {version:MODEL_VERSION,baseCurrency:'USD',assetCount:Object.keys(assetCatalog).length,arbitrageCount:arbitrages.length,activeArbitrageId,activeArbitrage:arbitrages.find(a=>a.id===activeArbitrageId)||null};}
 window.cryptoArbitrageModelSummary=modelSummary;
 window.cryptoArbitrageGetAssetCatalog=()=>Object.values(assetCatalog).map(a=>({...a}));
+window.cryptoArbitrageSetAssetCatalog=function(remoteAssets){
+  for(const item of remoteAssets||[]){
+    const symbol=String(item.symbol||'').toUpperCase();
+    if(!symbol)continue;
+    const current=assetCatalog[symbol]||defaultAsset(symbol);
+    assetCatalog[symbol]={
+      ...current,...item,symbol,
+      name:item.name||current.name||symbol,
+      type:String(item.type||item.asset_type||current.type||'CRYPTO').toUpperCase(),
+      cmc_id:item.cmc_id??null,
+      coingecko_id:item.coingecko_id??null,
+      price_source:item.price_source||current.price_source||null,
+      enabled:item.enabled!==false,
+      base_quote:item.base_quote||current.base_quote||'USD'
+    };
+  }
+  syncKnownAssetMetadata();
+  saveModel();
+};
 window.cryptoArbitrageClearAnalysisDraft=id=>temporaryDrafts.delete(String(id));
 window.cryptoArbitrageSetConfigurations=function(configs){
   const previous=activeArbitrageId;
