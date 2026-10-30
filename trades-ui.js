@@ -367,10 +367,37 @@
     const name = String(select?.selectedOptions?.[0]?.textContent || '').trim().replace(/\s+/g, ' ');
     if (ARBS[name]) return { ...ARBS[name] };
     const p = name.split('/').map(x => x.trim()).filter(Boolean);
-    return p.length >= 2 ? { id: selectedId || 'current', name, anchor: p[0], assets: p.slice(1, 3) } : { ...ARBS['ADA / NIGHT / SNEK'] };
+    return p.length >= 2 ? { id: selectedId || 'current', name, anchor: p[0], assets: p.slice(1) } : { ...ARBS['ADA / NIGHT / SNEK'] };
   }
-  function strategies(a) { const [x, y] = a.assets; return [`${a.anchor} → ${x} → ${a.anchor}`, `${a.anchor} → ${y} → ${a.anchor}`, `${x} → ${y} → ${a.anchor}`, `${y} → ${x} → ${a.anchor}`]; }
-  function initialAsset(strategy, a) { const [x, y] = a.assets; const s = strategies(a); return strategy === s[0] ? x : strategy === s[1] ? y : strategy === s[2] ? y : x; }
+  function strategies(a) {
+    const assets = Array.isArray(a.assets) ? a.assets : [];
+    if (assets.length === 2) {
+      const [x,y] = assets;
+      return [`${a.anchor} → ${x} → ${a.anchor}`, `${a.anchor} → ${y} → ${a.anchor}`, `${x} → ${y} → ${a.anchor}`, `${y} → ${x} → ${a.anchor}`];
+    }
+    return assets.map(asset => `${a.anchor} → ${asset} → ${a.anchor}`);
+  }
+  function initialAsset(strategy, a) {
+    const path = String(strategy || '').split('→').map(x => x.trim()).filter(Boolean);
+    return path.length >= 2 ? path[1] : (a.assets || [])[0];
+  }
+  function syncArbitrageDefinitions(configs) {
+    if (!Array.isArray(configs) || !configs.length) return;
+    Object.keys(ARBS).forEach(key => delete ARBS[key]);
+    configs.forEach(row => {
+      const item = {
+        id: row.id, name: row.name, anchor: row.anchor || row.anchor_symbol,
+        assets: [...(row.assets || row.comparativesDefault || row.comparative_symbols || [])]
+      };
+      ARBS[item.name] = item;
+    });
+    const selected = currentArb();
+    const tradeSelect = $('tradeVisualArbitrage');
+    if (tradeSelect && !tradeSelect.querySelector('option:checked')) populateArbitrageSelect(tradeSelect, selected.id);
+  }
+  document.addEventListener('crypto-arb-configurations-updated', event => {
+    syncArbitrageDefinitions(event.detail);
+  });
   function fmt(value, maxFractionDigits = 8) { const n = Number(value); return Number.isFinite(n) ? n.toLocaleString('pt-BR', { maximumFractionDigits: maxFractionDigits }) : '—'; }
   function escapeHtml(value) {
     return String(value ?? '').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
