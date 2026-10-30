@@ -16,6 +16,7 @@
   let userId = null;
   let loading = false;
   let lastAssetSignature = '';
+  let lastLocalAssetSignature = '';
   let editingId = null;
 
   function api() {
@@ -278,7 +279,7 @@
   }
   async function syncAssetsToSupabase(ctx) {
     const local = localAssets();
-    const rows = local.filter(a => a && a.symbol && a.enabled !== false).map(a => {
+    const rows = local.filter(a => a && a.symbol).map(a => {
       const symbol = String(a.symbol).toUpperCase();
       const type = String(a.type || 'CRYPTO').toUpperCase();
       return {
@@ -299,6 +300,7 @@
       body:JSON.stringify(rows)
     });
     lastAssetSignature = signature;
+    lastLocalAssetSignature = JSON.stringify(local);
     assets = await request('/rest/v1/arbitrage_assets?select=symbol,name,type,cmc_id,coingecko_id,enabled,price_source&order=symbol.asc');
   }
 
@@ -400,8 +402,12 @@
     // Keep the central asset catalog synchronized when the existing Ativos page
     // saves local metadata. The signature guard avoids repeat network writes.
     document.addEventListener('crypto-arb-model-saved', async () => {
+      const local = localAssets();
+      const signature = JSON.stringify(local);
+      if (signature === lastLocalAssetSignature) return;
+      lastLocalAssetSignature = signature;
       try { const ctx = await auth(true); await syncAssetsToSupabase(ctx); }
-      catch { /* Reads and analysis remain usable if an MFA write is not available. */ }
+      catch { lastLocalAssetSignature = ''; /* Retry after a real catalog change or explicit configuration save. */ }
     });
     await loadConfigs();
   }
