@@ -5,13 +5,65 @@
   "capture_after_time": "21:30",
   "base_currency": "USD",
   "assets": [
-    {"symbol": "ADA", "type": "CRYPTO", "cmc_id": 2010},
-    {"symbol": "NIGHT", "type": "CRYPTO", "cmc_id": 39064},
-    {"symbol": "SNEK", "type": "CRYPTO", "cmc_id": 25264},
-    {"symbol": "SOL", "type": "CRYPTO", "cmc_id": 5426},
-    {"symbol": "BONK", "type": "CRYPTO", "cmc_id": 23095},
-    {"symbol": "WIF", "type": "CRYPTO", "cmc_id": 28752},
-    {"symbol": "BRL", "type": "FIAT", "source": "frankfurter"},
-    {"symbol": "EUR", "type": "FIAT", "source": "frankfurter"}
+    {
+      "symbol": "ADA",
+      "type": "CRYPTO",
+      "cmc_id": 2010
+    },
+    {
+      "symbol": "NIGHT",
+      "type": "CRYPTO",
+      "cmc_id": 39064
+    },
+    {
+      "symbol": "SNEK",
+      "type": "CRYPTO",
+      "cmc_id": 25264
+    },
+    {
+      "symbol": "SOL",
+      "type": "CRYPTO",
+      "cmc_id": 5426
+    },
+    {
+      "symbol": "BONK",
+      "type": "CRYPTO",
+      "cmc_id": 23095
+    },
+    {
+      "symbol": "WIF",
+      "type": "CRYPTO",
+      "cmc_id": 28752
+    },
+    {
+      "symbol": "BTC",
+      "type": "CRYPTO",
+      "cmc_id": 1
+    },
+    {
+      "symbol": "ETH",
+      "type": "CRYPTO",
+      "cmc_id": 1027
+    },
+    {
+      "symbol": "USDT",
+      "type": "CRYPTO",
+      "cmc_id": 825
+    },
+    {
+      "symbol": "USDC",
+      "type": "CRYPTO",
+      "cmc_id": 3408
+    },
+    {
+      "symbol": "BRL",
+      "type": "FIAT",
+      "source": "frankfurter"
+    },
+    {
+      "symbol": "EUR",
+      "type": "FIAT",
+      "source": "frankfurter"
+    }
   ]
 }
