@@ -145,6 +145,7 @@
       ]);
       records = Array.isArray(configRows) ? configRows : [];
       assets = Array.isArray(assetRows) ? assetRows : [];
+      window.cryptoArbitrageSetAssetCatalog?.(assets);
       syncMainModel();
       renderList();
       populateAssetOptions();
