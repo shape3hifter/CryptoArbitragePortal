@@ -262,6 +262,7 @@ function loadModel(){
 function modelSummary(){return {version:MODEL_VERSION,baseCurrency:'USD',assetCount:Object.keys(assetCatalog).length,arbitrageCount:arbitrages.length,activeArbitrageId,activeArbitrage:arbitrages.find(a=>a.id===activeArbitrageId)||null};}
 window.cryptoArbitrageModelSummary=modelSummary;
 window.cryptoArbitrageGetAssetCatalog=()=>Object.values(assetCatalog).map(a=>({...a}));
+window.cryptoArbitrageClearAnalysisDraft=id=>temporaryDrafts.delete(String(id));
 window.cryptoArbitrageSetConfigurations=function(configs){
   const previous=activeArbitrageId;
   if(!persistentConfigurationsLoaded){temporaryDrafts.clear();persistentConfigurationsLoaded=true;}
