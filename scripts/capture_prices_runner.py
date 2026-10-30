@@ -56,7 +56,8 @@ def read_rows() -> list[dict[str, str]]:
 
 
 def expected_symbols(config: dict) -> set[str]:
-    return {str(asset["symbol"]).upper() for asset in config.get("assets", [])}
+    assets, _source = capture.load_configured_assets(config)
+    return {str(asset["symbol"]).upper() for asset in assets}
 
 
 def date_status(rows: list[dict[str, str]], expected: set[str], day: date, ref_time: str) -> tuple[bool, set[str]]:
