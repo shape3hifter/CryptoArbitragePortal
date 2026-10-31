@@ -1,17 +1,43 @@
 {
-  "reference_date": "2026-10-29",
+  "reference_date": "2026-10-30",
   "reference_time": "21:00",
   "reference_timezone": "America/Sao_Paulo",
-  "reference_utc": "2026-10-30T00:00:00+00:00",
+  "reference_utc": "2026-10-31T00:00:00+00:00",
   "capture_after_time": "21:30",
-  "executed_at": "2026-10-30T03:09:36.451761-03:00",
+  "executed_at": "2026-10-31T03:05:06.571753-03:00",
   "status": "manual_test",
   "price_method": "hourly_open_for_crypto; latest_published_daily_fx_for_fiat",
+  "asset_catalog_source": "supabase",
   "assets": [
     {
       "symbol": "ADA",
       "type": "CRYPTO",
       "cmc_id": 2010
+    },
+    {
+      "symbol": "BONK",
+      "type": "CRYPTO",
+      "cmc_id": 23095
+    },
+    {
+      "symbol": "BRL",
+      "type": "FIAT",
+      "cmc_id": null
+    },
+    {
+      "symbol": "BTC",
+      "type": "CRYPTO",
+      "cmc_id": 1
+    },
+    {
+      "symbol": "ETH",
+      "type": "CRYPTO",
+      "cmc_id": 1027
+    },
+    {
+      "symbol": "EUR",
+      "type": "FIAT",
+      "cmc_id": null
     },
     {
       "symbol": "NIGHT",
@@ -29,54 +55,62 @@
       "cmc_id": 5426
     },
     {
-      "symbol": "BONK",
+      "symbol": "USDC",
       "type": "CRYPTO",
-      "cmc_id": 23095
+      "cmc_id": 3408
+    },
+    {
+      "symbol": "USDT",
+      "type": "CRYPTO",
+      "cmc_id": 825
     },
     {
       "symbol": "WIF",
       "type": "CRYPTO",
       "cmc_id": 28752
-    },
-    {
-      "symbol": "BRL",
-      "type": "FIAT",
-      "cmc_id": null
-    },
-    {
-      "symbol": "EUR",
-      "type": "FIAT",
-      "cmc_id": null
     }
   ],
   "prices": {
-    "ADA": "0.1901713899",
-    "NIGHT": "0.0364548114",
-    "SNEK": "0.00058217196083",
-    "SOL": "95.4941311812",
-    "BONK": "0.00000280084241",
-    "WIF": "0.1660322333",
-    "BRL": "0.18677",
-    "EUR": "1.1159"
+    "ADA": "0.1951049162",
+    "BONK": "0.00000298694135",
+    "BRL": "0.18542",
+    "BTC": "77198.2098818183",
+    "ETH": "2241.0543381682",
+    "EUR": "1.1172",
+    "NIGHT": "0.0399979849",
+    "SNEK": "0.00056829675538",
+    "SOL": "96.2187570018",
+    "USDC": "0.9997316211",
+    "USDT": "0.9986518912",
+    "WIF": "0.1782861302"
   },
   "sources": {
     "ADA": "coinmarketcap_public_historical_web_data",
+    "BONK": "coinmarketcap_public_historical_web_data",
+    "BRL": "frankfurter",
+    "BTC": "coinmarketcap_public_historical_web_data",
+    "ETH": "coinmarketcap_public_historical_web_data",
+    "EUR": "frankfurter",
     "NIGHT": "coinmarketcap_public_historical_web_data",
     "SNEK": "coinmarketcap_public_historical_web_data",
     "SOL": "coinmarketcap_public_historical_web_data",
-    "BONK": "coinmarketcap_public_historical_web_data",
-    "WIF": "coinmarketcap_public_historical_web_data",
-    "BRL": "frankfurter",
-    "EUR": "frankfurter"
+    "USDC": "coinmarketcap_public_historical_web_data",
+    "USDT": "coinmarketcap_public_historical_web_data",
+    "WIF": "coinmarketcap_public_historical_web_data"
   },
   "source_timestamps": {
-    "ADA": "2026-10-30T00:00:00+00:00",
-    "NIGHT": "2026-10-30T00:00:00+00:00",
-    "SNEK": "2026-10-30T00:00:00+00:00",
-    "SOL": "2026-10-30T00:00:00+00:00",
-    "BONK": "2026-10-30T00:00:00+00:00",
-    "WIF": "2026-10-30T00:00:00+00:00",
-    "BRL": "2026-10-29",
-    "EUR": "2026-10-29"
-  }
+    "ADA": "2026-10-31T00:00:00+00:00",
+    "BONK": "2026-10-31T00:00:00+00:00",
+    "BRL": "2026-10-30",
+    "BTC": "2026-10-31T00:00:00+00:00",
+    "ETH": "2026-10-31T00:00:00+00:00",
+    "EUR": "2026-10-30",
+    "NIGHT": "2026-10-31T00:00:00+00:00",
+    "SNEK": "2026-10-31T00:00:00+00:00",
+    "SOL": "2026-10-31T00:00:00+00:00",
+    "USDC": "2026-10-31T00:00:00+00:00",
+    "USDT": "2026-10-31T00:00:00+00:00",
+    "WIF": "2026-10-31T00:00:00+00:00"
+  },
+  "asset_errors": []
 }
