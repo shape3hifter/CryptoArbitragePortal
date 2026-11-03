@@ -683,11 +683,11 @@ function historicalTimestampForBRTDate(dateStr){
   return Math.floor(d.getTime()/1000);
 }
 async function loadFiatHistory(symbol){
-  await window.cryptoArbitrageEnsureAuth({requireMfa:true});
   const a=assetCatalog[symbol]; if(!a||a.type!=='FIAT'||symbol==='USD') return;
   const btns=[...document.querySelectorAll(`[data-symbol="${symbol}"][data-asset-action="load-fiat"]`)];
   btns.forEach(b=>{b.disabled=true;b.textContent='Carregando…'});
   try{
+    await window.cryptoArbitrageEnsureAuth({requireMfa:true});
     const endDate=new Date();
     const startDate=new Date(endDate); startDate.setDate(startDate.getDate()-HISTORY_TARGET_DAYS);
     const from=startDate.toISOString().slice(0,10);
@@ -733,11 +733,11 @@ async function loadFiatHistory(symbol){
   finally{ renderAssetsView(); }
 }
 async function loadAssetHistory(symbol){
-  await window.cryptoArbitrageEnsureAuth({requireMfa:true});
   const a=assetCatalog[symbol];if(!a||a.type!=='CRYPTO')return;
   const btns=[...document.querySelectorAll(`[data-symbol="${symbol}"][data-asset-action="load"]`)];
   btns.forEach(b=>{b.disabled=true;b.textContent='Carregando…'});
   try{
+    await window.cryptoArbitrageEnsureAuth({requireMfa:true});
     const cfg=window.CRYPTO_ARB_SUPABASE_CONFIG||{};
     const res=await fetch(historyProxyUrl(symbol),{cache:'no-store',headers:{apikey:cfg.anonKey,Accept:'application/json'}});
     let payload={};try{payload=await res.json();}catch{}
