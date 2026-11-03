@@ -437,21 +437,29 @@ async function syncSupplementalHistoryRemote(){
   catch(e){return false;}
   if(!ctx?.userId)return false;
   const pending=mergePriceRows(seededRows);
+  let uploadOk=true;
   if(pending.length){
     try{
       await persistSupplementalHistory(pending,'browser_migration');
     }catch(e){
+      uploadOk=false;
       console.warn('Supplemental price history remains pending cloud sync:',e);
     }
   }
-  const query='/rest/v1/arbitrage_asset_price_history?select=symbol,date,time,fiat,price,source&user_id=eq.'+encodeURIComponent(ctx.userId)+'&order=date.asc';
-  const remote=await window.cryptoArbitrageApiRequest(query,{method:'GET'});
-  if(!Array.isArray(remote))throw new Error('Resposta inválida ao recuperar histórico da nuvem.');
-  const remoteRows=remote.map(r=>({date:String(r.date).slice(0,10),time:r.time||'21:00',fiat:r.fiat||'USD',symbol:r.symbol,price:Number(r.price)}));
-  seededRows=mergePriceRows(seededRows,remoteRows);
-  rows=mergePriceRows(rows,remoteRows);
+  const remoteRows=[];
+  const pageSize=1000;
+  for(let offset=0;;offset+=pageSize){
+    const query='/rest/v1/arbitrage_asset_price_history?select=symbol,date,time,fiat,price,source&user_id=eq.'+encodeURIComponent(ctx.userId)+'&order=symbol.asc,date.asc,time.asc&limit='+pageSize+'&offset='+offset;
+    const page=await window.cryptoArbitrageApiRequest(query,{method:'GET'});
+    if(!Array.isArray(page))throw new Error('Resposta inválida ao recuperar histórico da nuvem.');
+    remoteRows.push(...page);
+    if(page.length<pageSize)break;
+  }
+  const normalizedRemote=remoteRows.map(r=>({date:String(r.date).slice(0,10),time:r.time||'21:00',fiat:r.fiat||'USD',symbol:r.symbol,price:Number(r.price)}));
+  seededRows=mergePriceRows(seededRows,normalizedRemote);
+  rows=mergePriceRows(rows,normalizedRemote);
   invalidateAnalysisCache();saveLocal();populateControls();renderAssetsView();render();
-  return true;
+  return uploadOk;
 }
 
 function saveLocal(){syncActiveArbitrageFromSettings(); localStorage.setItem(DATA_KEY,JSON.stringify(rows));saveModel()}
@@ -1156,8 +1164,10 @@ function applyFreshStartReset(){
   updateCaptureStatus();
   if(location.protocol==='http:'||location.protocol==='https:'){
     await refreshRemoteData();
-    try{await syncSupplementalHistoryRemote();}catch(e){console.warn('Could not synchronize supplemental price history:',e);}
+    let historyCloudReady=false;
+    try{historyCloudReady=await syncSupplementalHistoryRemote();}catch(e){console.warn('Could not synchronize supplemental price history:',e);}
     renderAutomationStatus();
+    if(!historyCloudReady&&seededRows.length)$('automationStatus').textContent='Há histórico complementar neste navegador aguardando sincronização com a nuvem. Entre no painel Trades e conclua o MFA para enviá-lo ao Supabase.';
   }
 })();
 </script>
