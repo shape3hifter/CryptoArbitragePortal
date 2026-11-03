@@ -24,12 +24,12 @@ main{max-width:1180px;margin:0 auto;padding:28px 20px 60px}.top{display:flex;jus
 .assets-toolbar{display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin-bottom:12px}
 .asset-grid{display:grid;grid-template-columns:1fr;gap:12px}
 .asset-row{display:grid;grid-template-columns:1.1fr .65fr .55fr .75fr .75fr 1fr 1.25fr;gap:10px;align-items:center;background:var(--panel2);border:1px solid var(--border);border-radius:14px;padding:12px}
-.asset-cell{min-width:0}.asset-symbol{font-weight:700}.asset-name{font-size:12px;color:var(--muted);margin-top:3px}.asset-meta{font-size:12px;color:var(--muted)}
+.asset-row-head{background:transparent;border:0;padding:0 12px;color:var(--muted);font-size:11px;font-weight:700}.asset-cell{min-width:0}.asset-symbol{font-weight:700}.asset-name{font-size:12px;color:var(--muted);margin-top:3px}.asset-meta{font-size:12px;color:var(--muted)}
 .asset-status{font-size:11px;padding:4px 8px;border-radius:999px;border:1px solid var(--border);display:inline-block;font-weight:700}.asset-status.good{color:var(--good);background:rgba(104,211,145,.09)}.asset-status.warn{color:var(--warn);background:rgba(246,200,95,.09)}.asset-status.bad{color:var(--bad);background:rgba(255,125,125,.09)}.asset-status.muted{color:var(--muted)}
 .asset-actions{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}.asset-actions .btn{padding:7px 9px;font-size:11px}
 .add-asset-grid{display:grid;grid-template-columns:1fr 1.6fr .8fr .7fr .9fr .9fr;gap:10px}.add-asset-grid .wide{grid-column:1/-1}
 .assets-note{font-size:12px;color:var(--muted);line-height:1.5}.asset-empty{padding:20px;text-align:center;color:var(--muted);background:var(--panel2);border:1px dashed var(--border);border-radius:14px}
-@media(max-width:900px){.asset-row{grid-template-columns:repeat(2,1fr)}.add-asset-grid{grid-template-columns:1fr 1fr}.add-asset-grid .wide{grid-column:1/-1}}
+@media(max-width:900px){.asset-row{grid-template-columns:repeat(2,1fr)}.asset-row-head{display:none}.add-asset-grid{grid-template-columns:1fr 1fr}.add-asset-grid .wide{grid-column:1/-1}}
 @media(max-width:600px){.asset-row{grid-template-columns:1fr}.add-asset-grid{grid-template-columns:1fr}.add-asset-grid .wide{grid-column:auto}}
 .arb-switcher{margin-top:18px;background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}.arb-switcher .label{font-size:12px;color:var(--muted)}.arb-switcher select{background:#0d1528;color:var(--text);border:1px solid var(--border);border-radius:10px;padding:9px 10px;font-size:14px;min-width:260px}.arb-switcher .meta{font-size:12px;color:var(--muted)}
 @media(max-width:900px){.grid{grid-template-columns:1fr}.controls{grid-template-columns:repeat(2,1fr)}.metrics{grid-template-columns:repeat(2,1fr)}}@media(max-width:600px){main{padding:20px 12px 40px}.controls{grid-template-columns:1fr}.signals{grid-template-columns:1fr}.metrics{grid-template-columns:repeat(2,1fr)}.top{display:block}.chart{height:240px}.asset-tables{grid-template-columns:1fr}}
@@ -491,7 +491,7 @@ function renderAssetsView(){
   meta.textContent=`${formatCount(historic)} de ${formatCount(cryptoCount)} crypto(s) com pelo menos ${MIN_HISTORY_DAYS} dias de histórico local. USD é a base interna.`;
   const list=$('assetLibrary');
   if(!all.length){list.innerHTML='<div class="asset-empty">Nenhum ativo cadastrado.</div>';return;}
-  list.innerHTML=all.map(([s,a])=>{
+  list.innerHTML=`<div class="asset-row asset-row-head"><div>Ativo</div><div>Tipo</div><div>Moeda</div><div>CMC ID</div><div>Histórico</div><div>Status</div><div>Ações</div></div>`+all.map(([s,a])=>{
     const days=assetHistoryDays(s), latest=assetLatestDate(s); const disabled=a.enabled===false; const usable=a.type==='CRYPTO' && days>=MIN_HISTORY_DAYS;
     const isBaseFiat=s==='USD'; const isFiatHistory=a.type==='FIAT' && !isBaseFiat;
     const statusClass=disabled?'muted':(isBaseFiat?'good':(isFiatHistory?(days>=MIN_HISTORY_DAYS?'good':'warn'):(usable?'good':'warn')));
@@ -687,8 +687,8 @@ async function loadAssetHistory(symbol){
   try{
     const cfg=window.CRYPTO_ARB_SUPABASE_CONFIG||{};
     const res=await fetch(historyProxyUrl(symbol),{cache:'no-store',headers:{apikey:cfg.anonKey,Accept:'application/json'}});
-    if(!res.ok)throw new Error('HTTP '+res.status);
-    const payload=await res.json();
+    let payload={};try{payload=await res.json();}catch{}
+    if(!res.ok)throw new Error(payload?.error||payload?.message||payload?.detail||(`HTTP ${res.status}`));
     if(payload?.status?.error_code && Number(payload.status.error_code)!==0)throw new Error(payload.status.error_message||`CMC error ${payload.status.error_code}`);
     const hist=parseHistoricalResponse(payload);
     if(hist.length<MIN_HISTORY_DAYS)throw new Error(`CMC retornou apenas ${hist.length} dias válidos; são necessários pelo menos ${MIN_HISTORY_DAYS}.`);
