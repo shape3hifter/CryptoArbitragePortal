@@ -403,6 +403,57 @@ function mergeRemoteWithSeed(remote){
   return [...map.values()].sort((a,b)=>(a.date+' '+a.time).localeCompare(b.date+' '+b.time)||a.symbol.localeCompare(b.symbol));
 }
 function ensureSettings(){const available=cryptoAssets(); if(!available.includes(settings.anchor))settings.anchor=available[0]||'ADA'; settings.comps=settings.comps.filter(x=>x!==settings.anchor&&available.includes(x)); if(settings.comps.length<2) settings.comps=available.filter(x=>x!==settings.anchor).slice(0,2); syncActiveArbitrageFromSettings();}
+
+function priceRowKey(r){return [r.date,r.time||'21:00',String(r.fiat||'USD').toUpperCase(),String(r.symbol||'').toUpperCase()].join('|');}
+function mergePriceRows(...sets){
+  const map=new Map();
+  for(const set of sets) for(const row of (set||[])){
+    const normalized={...row,symbol:String(row.symbol||'').toUpperCase(),fiat:String(row.fiat||'USD').toUpperCase(),time:row.time||'21:00',price:Number(row.price)};
+    if(normalized.date&&normalized.symbol&&Number.isFinite(normalized.price)&&normalized.price>0) map.set(priceRowKey(normalized),normalized);
+  }
+  return [...map.values()].sort((a,b)=>(a.date+' '+a.time).localeCompare(b.date+' '+b.time)||a.symbol.localeCompare(b.symbol));
+}
+async function persistSupplementalHistory(historyRows,source='manual'){
+  const ctx=await window.cryptoArbitrageEnsureAuth({requireMfa:true});
+  if(!ctx?.userId)throw new Error('Faça login para gravar o histórico na nuvem.');
+  const payload=(historyRows||[]).map(r=>({
+    user_id:ctx.userId,symbol:String(r.symbol||'').toUpperCase(),date:r.date,
+    time:r.time||'21:00',fiat:String(r.fiat||'USD').toUpperCase(),
+    price:Number(r.price),source,updated_at:new Date().toISOString()
+  })).filter(r=>r.symbol&&r.date&&Number.isFinite(r.price)&&r.price>0);
+  const endpoint='/rest/v1/arbitrage_asset_price_history?on_conflict=user_id,symbol,date,time,fiat';
+  for(let i=0;i<payload.length;i+=500){
+    await window.cryptoArbitrageApiRequest(endpoint,{
+      method:'POST',headers:{Prefer:'resolution=merge-duplicates,return=minimal'},
+      body:JSON.stringify(payload.slice(i,i+500))
+    });
+  }
+  return payload.length;
+}
+async function syncSupplementalHistoryRemote(){
+  if(typeof window.cryptoArbitrageEnsureAuth!=='function'||typeof window.cryptoArbitrageApiRequest!=='function')return false;
+  let ctx;
+  try{ctx=await window.cryptoArbitrageEnsureAuth({requireMfa:false});}
+  catch(e){return false;}
+  if(!ctx?.userId)return false;
+  const pending=mergePriceRows(seededRows);
+  if(pending.length){
+    try{
+      await persistSupplementalHistory(pending,'browser_migration');
+    }catch(e){
+      console.warn('Supplemental price history remains pending cloud sync:',e);
+    }
+  }
+  const query='/rest/v1/arbitrage_asset_price_history?select=symbol,date,time,fiat,price,source&user_id=eq.'+encodeURIComponent(ctx.userId)+'&order=date.asc';
+  const remote=await window.cryptoArbitrageApiRequest(query,{method:'GET'});
+  if(!Array.isArray(remote))throw new Error('Resposta inválida ao recuperar histórico da nuvem.');
+  const remoteRows=remote.map(r=>({date:String(r.date).slice(0,10),time:r.time||'21:00',fiat:r.fiat||'USD',symbol:r.symbol,price:Number(r.price)}));
+  seededRows=mergePriceRows(seededRows,remoteRows);
+  rows=mergePriceRows(rows,remoteRows);
+  invalidateAnalysisCache();saveLocal();populateControls();renderAssetsView();render();
+  return true;
+}
+
 function saveLocal(){syncActiveArbitrageFromSettings(); localStorage.setItem(DATA_KEY,JSON.stringify(rows));saveModel()}
 function loadLocal(){try{const d=JSON.parse(localStorage.getItem(DATA_KEY)||'null');if(Array.isArray(d)&&d.length)rows=d}catch(e){} loadModel();}
 function activeArbitrage(){return arbitrages.find(a=>a.id===activeArbitrageId)||arbitrages[0]||null}
@@ -632,6 +683,7 @@ function historicalTimestampForBRTDate(dateStr){
   return Math.floor(d.getTime()/1000);
 }
 async function loadFiatHistory(symbol){
+  await window.cryptoArbitrageEnsureAuth({requireMfa:true});
   const a=assetCatalog[symbol]; if(!a||a.type!=='FIAT'||symbol==='USD') return;
   const btns=[...document.querySelectorAll(`[data-symbol="${symbol}"][data-asset-action="load-fiat"]`)];
   btns.forEach(b=>{b.disabled=true;b.textContent='Carregando…'});
@@ -672,15 +724,16 @@ async function loadFiatHistory(symbol){
 
     const incomingKeys=new Set(results.map(r=>`${r.date}|${r.time}|${r.fiat}|${r.symbol}`));
     const existing=rows.filter(r=>!incomingKeys.has(`${r.date}|${r.time}|${r.fiat}|${String(r.symbol).toUpperCase()}`));
-    seededRows=seededRows.filter(r=>String(r.symbol).toUpperCase()!==symbol);
-    seededRows.push(...results);
-    rows=[...existing,...results].sort((x,y)=>(x.date+' '+x.time).localeCompare(y.date+' '+y.time)||String(x.symbol).localeCompare(String(y.symbol)));
+    await persistSupplementalHistory(results,'frankfurter');
+    seededRows=mergePriceRows(seededRows.filter(r=>String(r.symbol).toUpperCase()!==symbol),results);
+    rows=mergePriceRows(rows,results);
     saveLocal();
-    alert(`${symbol}/USD: ${results.length} dias carregados localmente. Fonte: Frankfurter/ECB. O data.csv do GitHub não foi alterado.`);
+    alert(`${symbol}/USD: ${results.length} dias gravados na nuvem (Supabase). Fonte: Frankfurter/ECB. O data.csv oficial do GitHub não foi alterado.`);
   }catch(e){ alert(`Não foi possível carregar o histórico de ${symbol}/USD: ${e.message}`); }
   finally{ renderAssetsView(); }
 }
 async function loadAssetHistory(symbol){
+  await window.cryptoArbitrageEnsureAuth({requireMfa:true});
   const a=assetCatalog[symbol];if(!a||a.type!=='CRYPTO')return;
   const btns=[...document.querySelectorAll(`[data-symbol="${symbol}"][data-asset-action="load"]`)];
   btns.forEach(b=>{b.disabled=true;b.textContent='Carregando…'});
@@ -692,17 +745,15 @@ async function loadAssetHistory(symbol){
     if(payload?.status?.error_code && Number(payload.status.error_code)!==0)throw new Error(payload.status.error_message||`CMC error ${payload.status.error_code}`);
     const hist=parseHistoricalResponse(payload);
     if(hist.length<MIN_HISTORY_DAYS)throw new Error(`CMC retornou apenas ${hist.length} dias válidos; são necessários pelo menos ${MIN_HISTORY_DAYS}.`);
-    const incomingKeys=new Set(hist.map(r=>`${r.date}|${r.time}|${r.fiat}|${r.symbol||symbol}`));
     const normalizedHist=hist.map(r=>({...r,symbol}));
-    const existing=rows.filter(r=>!incomingKeys.has(`${r.date}|${r.time}|${r.fiat}|${String(r.symbol).toUpperCase()}`));
-    seededRows=seededRows.filter(r=>String(r.symbol).toUpperCase()!==symbol);
-    seededRows.push(...normalizedHist);
-    rows=[...existing,...normalizedHist].sort((x,y)=>(x.date+' '+x.time).localeCompare(y.date+' '+y.time)||String(x.symbol).localeCompare(String(y.symbol)));
+    await persistSupplementalHistory(normalizedHist,'coinmarketcap_history');
+    seededRows=mergePriceRows(seededRows.filter(r=>String(r.symbol).toUpperCase()!==symbol),normalizedHist);
+    rows=mergePriceRows(rows,normalizedHist);
     saveLocal();
     renderAssetsView();
     populateControls();
     render();
-    alert(`${symbol}: ${hist.length} dias de histórico carregados localmente. O data.csv do GitHub não foi alterado.`);
+    alert(`${symbol}: ${hist.length} dias de histórico gravados na nuvem (Supabase). O data.csv oficial do GitHub não foi alterado.`);
   }catch(e){alert(`Não foi possível carregar o histórico de ${symbol}: ${e.message}`)}
   finally{renderAssetsView();}
 }
@@ -1105,6 +1156,7 @@ function applyFreshStartReset(){
   updateCaptureStatus();
   if(location.protocol==='http:'||location.protocol==='https:'){
     await refreshRemoteData();
+    try{await syncSupplementalHistoryRemote();}catch(e){console.warn('Could not synchronize supplemental price history:',e);}
     renderAutomationStatus();
   }
 })();
