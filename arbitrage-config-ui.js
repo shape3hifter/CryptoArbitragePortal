@@ -173,7 +173,7 @@
   function populateAssetOptions() {
     const all = assetMap();
     const crypto = all.filter(a => String(a.type || a.asset_type).toUpperCase() === 'CRYPTO').sort((a,b)=>a.symbol.localeCompare(b.symbol));
-    const units = all.filter(a => ['CRYPTO','FIAT'].includes(String(a.type || a.asset_type).toUpperCase())).sort((a,b)=>a.symbol.localeCompare(b.symbol));
+    const units = all.filter(a => a.is_currency === true && ['CRYPTO','FIAT'].includes(String(a.type || a.asset_type).toUpperCase())).sort((a,b)=>a.symbol.localeCompare(b.symbol));
     const ref = $('cfgReference'), anchor = $('cfgAnchor');
     if (!ref || !anchor) return;
     const oldRef = ref.value, oldAnchor = anchor.value;
