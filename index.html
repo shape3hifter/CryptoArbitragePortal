@@ -620,6 +620,7 @@ async function loadAssetHistory(symbol){
   finally{renderAssetsView();}
 }
 async function handleAssetAction(action,symbol){if(action==='edit')startEditAsset(symbol);else if(action==='toggle')toggleAsset(symbol);else if(action==='load')await loadAssetHistory(symbol);else if(action==='load-fiat')await loadFiatHistory(symbol);}
+function renderChecks(){const arr=cryptoAssets().filter(a=>a!==settings.anchor); $('checks').innerHTML=arr.map(a=>`<label><input type="checkbox" data-comp="${a}" ${settings.comps.includes(a)?'checked':''}> ${a}</label>`).join(''); $('checks').querySelectorAll('input').forEach(i=>i.addEventListener('change',()=>{let next=[...$('checks').querySelectorAll('input:checked')].map(x=>x.dataset.comp); if(next.length<2){i.checked=true;return} if(next.length>5){i.checked=false;return} settings.comps=next; syncActiveArbitrageFromSettings(); invalidateAnalysisCache(); render();}));}
 function populateControls(){
   ensureSettings(); renderArbitrageSelector();
   const fiat=$('fiat'),lookback=$('lookback'),asof=$('asof'),anchor=$('anchor');
