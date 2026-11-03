@@ -726,6 +726,171 @@ function updateLiveStatus(){
 }
 async function fetchLivePrices(){
   if(liveInFlight)return;
+  liveInFlight=true;
+  const btn=$('liveBtn');
+  btn.disabled=true;
+  btn.textContent='Consultando…';
+  try{
+    const needed=[settings.anchor,...settings.comps];
+    const cfg=window.CRYPTO_ARB_SUPABASE_CONFIG||{};
+    const base=String(cfg.url||'').replace(/\\/$/,'');
+    if(!base||!cfg.anonKey)throw new Error('Serviço de cotação não configurado.');
+    const ids=needed.map(symbol=>String(assetCatalog[symbol]?.coingecko_id||'').trim());
+    if(ids.some(id=>!id))throw new Error('Um ou mais ativos ainda não possuem CoinGecko ID cadastrado.');
+    const endpoint=base+'/functions/v1/live-prices?ids='+encodeURIComponent(ids.join(','))+'&vs_currencies=usd';
+    const res=await fetch(endpoint,{method:'GET',cache:'no-store',headers:{apikey:cfg.anonKey,Accept:'application/json'}});
+    let payload={};
+    try{payload=await res.json();}catch{}
+    if(!res.ok)throw new Error(payload?.error||payload?.message||('HTTP '+res.status));
+    const prices={};
+    needed.forEach((symbol,index)=>{
+      const value=Number(payload?.[ids[index]]?.usd);
+      if(Number.isFinite(value)&&value>0)prices[symbol]=value;
+    });
+    if(!needed.every(symbol=>Number.isFinite(prices[symbol])))throw new Error('O serviço não retornou cotação para todos os ativos selecionados.');
+    const now=new Date();
+    temporarySnapshot={rawTime:now.toISOString(),dt:localNowISO(),fiat:'USD',prices};
+    updateLiveStatus();
+    invalidateAnalysisCache();
+    render();
+  }catch(e){
+    $('liveStatusPill').textContent='Erro';
+    $('liveStatusMeta').textContent='Não foi possível consultar a cotação atual: '+(e?.message||String(e));
+    $('livePrices').innerHTML='';
+  }finally{
+    liveInFlight=false;
+    btn.disabled=false;
+    btn.textContent='⚡ Cotação agora';
+  }
+}
+function maybeClearTemporaryAfterRemote(){if(temporarySnapshot&&hasOfficialSnapshotForDate(temporarySnapshot.dt.slice(0,10)))clearTemporarySnapshot();}
+function drawChart(svgId,datasets,thresholds){const svg=$(svgId); svg.innerHTML=''; const W=900,H=300,p={l:48,r:18,t:14,b:32}, x0=p.l,x1=W-p.r,y0=H-p.b,y1=p.t; const vals=datasets.flatMap(d=>d.values.filter(Number.isFinite)); if(!vals.length){svg.innerHTML='<text x="450" y="150" text-anchor="middle" fill="#9eb0d1">Sem dados suficientes</text>';return} let min=Math.min(...vals),max=Math.max(...vals); if(thresholds)for(const t of thresholds){min=Math.min(min,t);max=Math.max(max,t)} let span=max-min||1;min-=span*.08;max+=span*.08; const n=Math.max(...datasets.map(d=>d.values.length)); const x=i=>x0+(i/Math.max(1,n-1))*(x1-x0), y=v=>y0-((v-min)/(max-min))*(y0-y1); for(let i=0;i<4;i++){const yy=y0-(i/3)*(y0-y1);const l=line(x0,yy,x1,yy,'#2b3857',1);svg.appendChild(l)} if(thresholds)for(const t of thresholds){const l=line(x0,y(t),x1,y(t),'#7b89a8',1,'5 5');svg.appendChild(l);const tx=text(8,y(t)+4,'#9eb0d1',11,String(t));svg.appendChild(tx)} datasets.forEach((ds,j)=>{const pts=ds.values.map((v,i)=>Number.isFinite(v)?`${x(i)},${y(v)}`:null).filter(Boolean).join(' ');const poly=document.createElementNS('http://www.w3.org/2000/svg','polyline');poly.setAttribute('points',pts);poly.setAttribute('fill','none');poly.setAttribute('stroke',j%2?'var(--series2)':'var(--accent)');poly.setAttribute('stroke-width','2.2');svg.appendChild(poly)}); [0,Math.floor(n/2),n-1].forEach((i,j)=>{if(i<0)return;const t=text(x(i),H-9,'#9eb0d1',11,j===0?'start':j===2?'end':'middle',niceDate(datasets[0].dates[i]||''));svg.appendChild(t)});}
+function line(x1,y1,x2,y2,stroke,w,dash){const l=document.createElementNS('http://www.w3.org/2000/svg','line');[['x1',x1],['y1',y1],['x2',x2],['y2',y2]].forEach(([a,v])=>l.setAttribute(a,v));l.setAttribute('stroke',stroke);l.setAttribute('stroke-width',w);if(dash)l.setAttribute('stroke-dasharray',dash);return l}
+function text(x,y,fill,size,anchor='start',txt=''){const t=document.createElementNS('http://www.w3.org/2000/svg','text');t.setAttribute('x',x);t.setAttribute('y',y);t.setAttribute('fill',fill);t.setAttribute('font-size',size);t.setAttribute('text-anchor',anchor);t.textContent=txt;return t}
+async function refreshRemoteData(){
+  let dataOk=false;
+  try{
+    const res=await fetch('data.csv?ts='+Date.now(),{cache:'no-store'});
+    if(!res.ok) throw new Error('HTTP '+res.status);
+    const text=await res.text();
+    const imported=parseCSV(text);
+    if(imported.length){
+      rows=mergeRemoteWithSeed(imported);
+      invalidateAnalysisCache();
+      saveLocal();
+      populateControls();
+      render();
+      dataOk=true;
+    }
+  }catch(e){
+    $('automationStatus').textContent='Modo local: não foi possível sincronizar data.csv automaticamente. A base local continua disponível.';
+  }
+
+  await loadCaptureLog();
+  updateCaptureStatus();
+
+  if(dataOk){
+    maybeClearTemporaryAfterRemote();
+    $('automationStatus').textContent='Base remota sincronizada a partir do data.csv do GitHub. A coleta é feita pelo GitHub Actions.';
+  }
+  return dataOk;
+}
+async function loadCaptureLog(){
+  try{
+    const res=await fetch('capture-log.json?ts='+Date.now(),{cache:'no-store'});
+    if(!res.ok) throw new Error('HTTP '+res.status);
+    captureLog=await res.json();
+  }catch(e){
+    captureLog=null;
+  }
+}
+function formatCaptureDate(dateStr,timeStr='21:00'){
+  if(!dateStr) return '—';
+  const [y,m,d]=dateStr.split('-');
+  return `${d}/${m}/${y} · ${timeStr} BRT`;
+}
+function formatExecutedAt(value){
+  if(!value) return 'horário de execução não disponível';
+  const d=new Date(value);
+  if(Number.isNaN(d.getTime())) return value;
+  return `executada em ${d.toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'})}`;
+}
+function updateCaptureStatus(){
+  const pill=$('captureStatusPill');
+  const meta=$('captureStatusMeta');
+  const assetsBox=$('captureAssets');
+  // The capture status must always follow the arbitrage currently displayed
+  // on screen. Do not rely on activeArbitrage() here because the UI settings
+  // are updated before the model/render cycle finishes.
+  const expected=[settings.anchor,...settings.comps].filter(Boolean);
+  if(!captureLog){
+    pill.textContent='Sem registro';
+    pill.className='capture-status-pill warn';
+    meta.textContent='O portal ainda não encontrou capture-log.json no GitHub.';
+    assetsBox.innerHTML=expected.map(s=>`<span class="capture-asset">${s} ?</span>`).join('');
+    return;
+  }
+  const referenceDate=captureLog.reference_date||'';
+  const referenceTime=captureLog.reference_time||'21:00';
+  const referenceDt=new Date(`${referenceDate}T${referenceTime}:00-03:00`);
+  const now=new Date();
+  const hasFutureReference=Number.isFinite(referenceDt.getTime()) && referenceDt>now;
+  const prices=captureLog.prices||{};
+  const expectedPresent=expected.length>0 && expected.every(s=>Number.isFinite(Number(prices[s])));
+  const hasOfficialRows=expected.length>0 && expected.every(s=>rows.some(r=>String(r.symbol||'').toUpperCase()===s&&r.date===referenceDate&&r.time===referenceTime&&r.fiat===settings.fiat&&Number.isFinite(Number(r.price))));
+
+  let label='OK';
+  let cls='good';
+  if(!expectedPresent){ label='Base pendente'; cls='warn'; }
+  else if(captureLog.status==='late' || hasFutureReference){ label=hasFutureReference?'Registrada':'Atrasada'; cls='warn'; }
+  else if(!hasOfficialRows){ label='Atualizando'; cls='warn'; }
+
+  pill.textContent=label;
+  pill.className=`capture-status-pill ${cls}`;
+  const suffix=hasFutureReference?' · referência futura; ainda não entra no snapshot atual.':(!expectedPresent?' · esta arbitragem ainda não possui captura registrada para todos os ativos.':'');
+  meta.textContent=`${formatCaptureDate(referenceDate,referenceTime)} · ${formatExecutedAt(captureLog.executed_at)}${suffix}`;
+  assetsBox.innerHTML=expected.map(s=>`<span class="capture-asset ${Number.isFinite(Number(prices[s]))?'ok':''}">${s} ${Number.isFinite(Number(prices[s]))?'✓':'!'}</span>`).join('');
+}
+function renderAutomationStatus(){
+  const hasRemote=location.protocol==='http:'||location.protocol==='https:';
+  $('automationStatus').textContent=hasRemote
+    ? 'Automação: GitHub Actions consulta a CMC diariamente a partir das 21:30 BRT, capturando o snapshot das 21:00, atualiza data.csv e republica este portal.'
+    : 'Automação configurada no projeto: GitHub Actions consulta a CMC diariamente às 21:00 BRT e atualiza data.csv.';
+}
+function localNowISO(){
+  const d=new Date(),pad=n=>String(n).padStart(2,'0');
+  return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())+'T'+pad(d.getHours())+':'+pad(d.getMinutes());
+}
+function latestOfficialSnapshotISO(){
+  const symbols=[settings.anchor,...settings.comps].filter(Boolean);
+  const now=new Date();
+  const candidates=[...new Set(rows
+    .filter(r=>r.fiat==='USD' && symbols.includes(String(r.symbol||'').toUpperCase()))
+    .map(r=>r.date+'T'+(r.time||'21:00')+':00')
+    .filter(dt=>new Date(dt)<=now)
+  )].sort();
+  for(let i=candidates.length-1;i>=0;i--){
+    const dt=candidates[i];
+    if(symbols.every(s=>rows.some(r=>r.fiat==='USD' && String(r.symbol||'').toUpperCase()===s && (r.date+'T'+(r.time||'21:00')+':00')===dt))) return dt.slice(0,16);
+  }
+  return '';
+}
+function formatSnapshotBR(iso){
+  if(!iso)return '';
+  const d=new Date(iso),pad=n=>String(n).padStart(2,'0');
+  return pad(d.getDate())+'/'+pad(d.getMonth()+1)+'/'+d.getFullYear()+' '+pad(d.getHours())+':'+pad(d.getMinutes());
+}
+function temporaryDisplayTime(){return temporarySnapshot?new Date(temporarySnapshot.rawTime).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit'})+' BRT':'';}
+function hasOfficialSnapshotForDate(dateStr){const symbols=[settings.anchor,...settings.comps]; return symbols.every(s=>rows.some(r=>r.date===dateStr&&r.time==='21:00'&&r.fiat===settings.fiat&&r.symbol===s&&Number.isFinite(Number(r.price))));}
+function clearTemporarySnapshot(){temporarySnapshot=null;invalidateAnalysisCache();updateLiveStatus();render();}
+function updateLiveStatus(){
+  const pill=$('liveStatusPill'),meta=$('liveStatusMeta'),box=$('livePrices');
+  if(!temporarySnapshot){pill.textContent='Não carregada';meta.textContent='Use o botão acima para adicionar uma observação temporária ao cálculo. Ela não é gravada no data.csv.';box.innerHTML='';return;}
+  pill.textContent='Temporário';meta.textContent=`${temporaryDisplayTime()} · CMC · cotação atual · não gravada no data.csv`;
+  box.innerHTML=[settings.anchor,...settings.comps].map(s=>{const display=convertUSDToReference(Number(temporarySnapshot.prices[s]),temporarySnapshot.dt); return `<div class="live-price"><div class="sym">${s} / ${settings.fiat}</div><div class="val">${fmt(display,10)}</div></div>`}).join('');
+}
+async function fetchLivePrices(){
+  if(liveInFlight)return;
   liveInFlight=true;const btn=$('liveBtn');btn.disabled=true;btn.textContent='Consultando…';
   try{
     const needed=[settings.anchor,...settings.comps];
@@ -743,6 +908,37 @@ async function fetchLivePrices(){
   finally{liveInFlight=false;btn.disabled=false;btn.textContent='⚡ Cotação agora';}
 }
 function maybeClearTemporaryAfterRemote(){if(temporarySnapshot&&hasOfficialSnapshotForDate(temporarySnapshot.dt.slice(0,10)))clearTemporarySnapshot();}
+
+async function refreshRemoteData(){
+  let dataOk=false;
+  try{
+    const res=await fetch('data.csv?ts='+Date.now(),{cache:'no-store'});
+    if(!res.ok) throw new Error('HTTP '+res.status);
+    const text=await res.text();
+    const imported=parseCSV(text);
+    if(imported.length){
+      rows=mergeRemoteWithSeed(imported);
+      invalidateAnalysisCache();
+      saveLocal();
+      populateControls();
+      render();
+      dataOk=true;
+    }
+  }catch(e){
+    $('automationStatus').textContent='Modo local: não foi possível sincronizar data.csv automaticamente. A base local continua disponível.';
+  }
+
+  await loadCaptureLog();
+  updateCaptureStatus();
+
+  if(dataOk){
+    maybeClearTemporaryAfterRemote();
+    $('automationStatus').textContent='Base remota sincronizada a partir do data.csv do GitHub. A coleta é feita pelo GitHub Actions.';
+  }
+  window.dispatchEvent(new Event('cryptoArbDataUpdated'));
+  return dataOk;
+}
+
 function render(){
   ensureSettings(); renderArbitrageSelector(); renderChecks();
   const current=usable(); const latestDate=current.filter(r=>r.symbol===settings.anchor).at(-1)?.date||'—';
