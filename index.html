@@ -711,7 +711,14 @@ function renderChecks(){const arr=cryptoAssets().filter(a=>a!==settings.anchor);
 function populateControls(){
   ensureSettings(); renderArbitrageSelector();
   const fiat=$('fiat'),lookback=$('lookback'),asof=$('asof'),anchor=$('anchor');
-  if(fiat){const units=Object.values(assetCatalog).filter(a=>a.enabled!==false).map(a=>a.symbol).sort();fiat.innerHTML=units.map(a=>`<option>${a}</option>`).join('');fiat.value=settings.fiat;}
+  if(fiat){
+    const units=Object.values(assetCatalog).filter(a=>a.enabled!==false&&a.is_currency===true).map(a=>a.symbol).sort();
+    const previousFiat=settings.fiat;
+    if(!units.includes(settings.fiat))settings.fiat=units.includes('USD')?'USD':(units[0]||'USD');
+    if(settings.fiat!==previousFiat)syncActiveArbitrageFromSettings();
+    fiat.innerHTML=units.map(a=>`<option>${a}</option>`).join('');
+    fiat.value=settings.fiat;
+  }
   if(lookback)lookback.value=String(settings.lookback);
   if(asof){const iso=latestOfficialSnapshotISO();asof.dataset.iso=iso;asof.textContent=iso?formatSnapshotBR(iso):'—';}
   if(anchor){anchor.innerHTML=cryptoAssets().map(a=>`<option>${a}</option>`).join('');anchor.value=settings.anchor;}
