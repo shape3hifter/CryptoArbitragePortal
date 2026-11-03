@@ -23,11 +23,11 @@ main{max-width:1180px;margin:0 auto;padding:28px 20px 60px}.top{display:flex;jus
 .view-panel{margin-top:8px}
 .assets-toolbar{display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin-bottom:12px}
 .asset-grid{display:grid;grid-template-columns:1fr;gap:12px}
-.asset-row{display:grid;grid-template-columns:1.2fr .7fr .8fr .8fr 1.1fr 1.1fr;gap:10px;align-items:center;background:var(--panel2);border:1px solid var(--border);border-radius:14px;padding:12px}
+.asset-row{display:grid;grid-template-columns:1.1fr .65fr .55fr .75fr .75fr 1fr 1.25fr;gap:10px;align-items:center;background:var(--panel2);border:1px solid var(--border);border-radius:14px;padding:12px}
 .asset-cell{min-width:0}.asset-symbol{font-weight:700}.asset-name{font-size:12px;color:var(--muted);margin-top:3px}.asset-meta{font-size:12px;color:var(--muted)}
 .asset-status{font-size:11px;padding:4px 8px;border-radius:999px;border:1px solid var(--border);display:inline-block;font-weight:700}.asset-status.good{color:var(--good);background:rgba(104,211,145,.09)}.asset-status.warn{color:var(--warn);background:rgba(246,200,95,.09)}.asset-status.bad{color:var(--bad);background:rgba(255,125,125,.09)}.asset-status.muted{color:var(--muted)}
 .asset-actions{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}.asset-actions .btn{padding:7px 9px;font-size:11px}
-.add-asset-grid{display:grid;grid-template-columns:1fr 1.6fr .9fr .9fr;gap:10px}.add-asset-grid .wide{grid-column:1/-1}
+.add-asset-grid{display:grid;grid-template-columns:1fr 1.6fr .8fr .7fr .9fr .9fr;gap:10px}.add-asset-grid .wide{grid-column:1/-1}
 .assets-note{font-size:12px;color:var(--muted);line-height:1.5}.asset-empty{padding:20px;text-align:center;color:var(--muted);background:var(--panel2);border:1px dashed var(--border);border-radius:14px}
 @media(max-width:900px){.asset-row{grid-template-columns:repeat(2,1fr)}.add-asset-grid{grid-template-columns:1fr 1fr}.add-asset-grid .wide{grid-column:1/-1}}
 @media(max-width:600px){.asset-row{grid-template-columns:1fr}.add-asset-grid{grid-template-columns:1fr}.add-asset-grid .wide{grid-column:auto}}
@@ -65,6 +65,7 @@ main{max-width:1180px;margin:0 auto;padding:28px 20px 60px}.top{display:flex;jus
         <div class="field"><label for="newAssetSymbol">Símbolo</label><input id="newAssetSymbol" placeholder="Ex.: BONK"></div>
         <div class="field"><label for="newAssetName">Nome</label><input id="newAssetName" placeholder="Ex.: Bonk"></div>
         <div class="field"><label for="newAssetType">Tipo</label><select id="newAssetType"><option value="CRYPTO">Crypto</option><option value="FIAT">Fiat</option></select></div>
+        <div class="field"><label for="newAssetIsCurrency">Moeda</label><select id="newAssetIsCurrency"><option value="true">Sim</option><option value="false" selected>Não</option></select></div>
         <div class="field"><label for="newAssetCmcId">CoinMarketCap ID</label><input id="newAssetCmcId" inputmode="numeric" placeholder="Ex.: 23095"></div>
         <div class="field"><label for="newAssetCoinGeckoId">CoinGecko ID</label><input id="newAssetCoinGeckoId" placeholder="Ex.: bitcoin"></div>
         <div class="wide actions" style="margin-top:0">
@@ -162,16 +163,16 @@ const temporaryDrafts=new Map();
 let persistentConfigurationsLoaded=false;
 
 const KNOWN_ASSETS={
-  USD:{symbol:'USD',name:'US Dollar',type:'FIAT',cmc_id:null,coingecko_id:null},
-  BRL:{symbol:'BRL',name:'Brazilian Real',type:'FIAT',cmc_id:null,coingecko_id:null},
-  EUR:{symbol:'EUR',name:'Euro',type:'FIAT',cmc_id:null,coingecko_id:null},
+  USD:{symbol:'USD',name:'US Dollar',type:'FIAT',cmc_id:null,coingecko_id:null,is_currency:true},
+  BRL:{symbol:'BRL',name:'Brazilian Real',type:'FIAT',cmc_id:null,coingecko_id:null,is_currency:true},
+  EUR:{symbol:'EUR',name:'Euro',type:'FIAT',cmc_id:null,coingecko_id:null,is_currency:true},
   ADA:{symbol:'ADA',name:'Cardano',type:'CRYPTO',cmc_id:2010,coingecko_id:'cardano'},
   NIGHT:{symbol:'NIGHT',name:'NIGHT',type:'CRYPTO',cmc_id:39064,coingecko_id:'midnight-3'},
   SNEK:{symbol:'SNEK',name:'Snek',type:'CRYPTO',cmc_id:25264,coingecko_id:'snek'},
   SOL:{symbol:'SOL',name:'Solana',type:'CRYPTO',cmc_id:5426,coingecko_id:'solana'},
   BONK:{symbol:'BONK',name:'Bonk',type:'CRYPTO',cmc_id:23095,coingecko_id:'bonk'},
   WIF:{symbol:'WIF',name:'dogwifhat',type:'CRYPTO',cmc_id:28752,coingecko_id:'dogwifcoin'},
-  BTC:{symbol:'BTC',name:'Bitcoin',type:'CRYPTO',cmc_id:1,coingecko_id:'bitcoin'},
+  BTC:{symbol:'BTC',name:'Bitcoin',type:'CRYPTO',cmc_id:1,coingecko_id:'bitcoin',is_currency:true},
   ETH:{symbol:'ETH',name:'Ethereum',type:'CRYPTO',cmc_id:1027,coingecko_id:'ethereum'},
   USDT:{symbol:'USDT',name:'Tether',type:'CRYPTO',cmc_id:825,coingecko_id:'tether'},
   USDC:{symbol:'USDC',name:'USD Coin',type:'CRYPTO',cmc_id:3408,coingecko_id:'usd-coin'},
@@ -196,6 +197,7 @@ function syncKnownAssetMetadata(){
     if(known.name && (!current.name || current.name===symbol)) current.name=known.name;
     if(known.cmc_id!=null) current.cmc_id=known.cmc_id;
     if(known.coingecko_id) current.coingecko_id=known.coingecko_id;
+    if(current.is_currency===undefined) current.is_currency=!!known.is_currency;
     if(current.enabled===undefined) current.enabled=true;
     if(!current.base_quote) current.base_quote='USD';
   }
@@ -244,6 +246,24 @@ function syncActiveArbitrageFromSettings(){
   if(!assetCatalog[draft.anchor]) assetCatalog[draft.anchor]=defaultAsset(draft.anchor);
   for(const c of draft.comps){if(!assetCatalog[c])assetCatalog[c]=defaultAsset(c);}
 }
+async function refreshAssetCatalogRemote(){
+  const cfg=window.CRYPTO_ARB_SUPABASE_CONFIG||{};
+  const base=String(cfg.url||'').replace(/\/$/,'');
+  if(!base||!cfg.anonKey)return false;
+  try{
+    const url=base+'/rest/v1/arbitrage_assets?select=symbol,user_id,name,type,cmc_id,coingecko_id,is_currency,enabled,base_quote,price_source&order=symbol.asc';
+    const res=await fetch(url,{headers:{apikey:cfg.anonKey,Authorization:'Bearer '+cfg.anonKey,Accept:'application/json'},cache:'no-store'});
+    if(!res.ok)throw new Error('HTTP '+res.status);
+    const remote=await res.json();
+    if(!Array.isArray(remote))throw new Error('Resposta inválida do catálogo de ativos.');
+    for(const item of remote){
+      const symbol=String(item.symbol||'').toUpperCase();if(!symbol)continue;
+      const current=assetCatalog[symbol]||defaultAsset(symbol);
+      assetCatalog[symbol]={...current,...item,symbol,is_currency:!!item.is_currency,enabled:item.enabled!==false};
+    }
+    syncKnownAssetMetadata();saveModel();return true;
+  }catch(error){console.warn('Could not refresh asset catalog from Supabase:',error);return false;}
+}
 function saveModel(){
   localStorage.setItem(MODEL_KEY,JSON.stringify({version:MODEL_VERSION,baseCurrency:'USD',assetCatalog,arbitrages,activeArbitrageId,seededRows}));
 }
@@ -273,6 +293,7 @@ window.cryptoArbitrageSetAssetCatalog=function(remoteAssets){
       type:String(item.type||item.asset_type||current.type||'CRYPTO').toUpperCase(),
       cmc_id:item.cmc_id??null,
       coingecko_id:item.coingecko_id??null,
+      is_currency:item.is_currency===undefined?!!current.is_currency:!!item.is_currency,
       price_source:item.price_source||current.price_source||null,
       enabled:item.enabled!==false,
       base_quote:item.base_quote||current.base_quote||'USD'
@@ -479,7 +500,7 @@ function renderAssetsView(){
     const editBtn=`<button class="btn" data-asset-action="edit" data-symbol="${s}">Editar</button>`;
     const toggleText=disabled?'Ativar':'Inativar';
     const toggleDisabled=assetIsUsed(s)&&!disabled?'disabled title="Ativo usado por uma arbitragem"':'';
-    return `<div class="asset-row"><div class="asset-cell"><div class="asset-symbol">${s}</div><div class="asset-name">${a.name||s}</div></div><div class="asset-cell"><div class="asset-meta">${a.type||'CRYPTO'}</div></div><div class="asset-cell"><div class="asset-meta">${a.cmc_id||'—'}</div></div><div class="asset-cell"><div class="asset-meta">${(a.type==='CRYPTO'||isFiatHistory)?formatCount(days)+' dias':'—'}</div><div class="asset-meta">${latest||'—'}</div></div><div class="asset-cell"><span class="asset-status ${statusClass}">${statusText}</span></div><div class="asset-cell asset-actions">${editBtn}${loadBtn}<button class="btn" data-asset-action="toggle" data-symbol="${s}" ${toggleDisabled}>${toggleText}</button></div></div>`;
+    return `<div class="asset-row"><div class="asset-cell"><div class="asset-symbol">${s}</div><div class="asset-name">${a.name||s}</div></div><div class="asset-cell"><div class="asset-meta">${a.type||'CRYPTO'}</div></div><div class="asset-cell"><div class="asset-meta">${a.is_currency?'Sim':'Não'}</div></div><div class="asset-cell"><div class="asset-meta">${a.cmc_id||'—'}</div></div><div class="asset-cell"><div class="asset-meta">${(a.type==='CRYPTO'||isFiatHistory)?formatCount(days)+' dias':'—'}</div><div class="asset-meta">${latest||'—'}</div></div><div class="asset-cell"><span class="asset-status ${statusClass}">${statusText}</span></div><div class="asset-cell asset-actions">${editBtn}${loadBtn}<button class="btn" data-asset-action="toggle" data-symbol="${s}" ${toggleDisabled}>${toggleText}</button></div></div>`;
   }).join('');
   list.querySelectorAll('[data-asset-action]').forEach(btn=>btn.addEventListener('click',()=>handleAssetAction(btn.dataset.assetAction,btn.dataset.symbol)));
 }
@@ -490,6 +511,7 @@ function startEditAsset(symbol){
   editingAssetSymbol=symbol;
   $('newAssetSymbol').value=symbol; $('newAssetSymbol').disabled=true;
   $('newAssetName').value=a.name||symbol; $('newAssetType').value=a.type||'CRYPTO'; $('newAssetType').disabled=true;
+  $('newAssetIsCurrency').value=a.is_currency?'true':'false';
   $('newAssetCmcId').value=a.cmc_id||''; $('newAssetCoinGeckoId').value=a.coingecko_id||'';
   $('addAssetBtn').textContent='Salvar alterações';
   $('clearAssetFormBtn').textContent='Cancelar edição';
@@ -499,28 +521,92 @@ function startEditAsset(symbol){
 function resetAssetForm(){
   editingAssetSymbol=null; $('newAssetSymbol').disabled=false; $('newAssetType').disabled=false; $('addAssetBtn').textContent='Adicionar ativo'; $('clearAssetFormBtn').textContent='Limpar';
 }
-function clearAssetForm(){$('newAssetSymbol').value='';$('newAssetName').value='';$('newAssetType').value='CRYPTO';$('newAssetCmcId').value='';$('newAssetCoinGeckoId').value='';resetAssetForm();$('newAssetType').dispatchEvent(new Event('change'));}
-function addAsset(){
-  const symbol=$('newAssetSymbol').value.trim().toUpperCase(); const name=$('newAssetName').value.trim()||symbol; const type=$('newAssetType').value; const id=Number($('newAssetCmcId').value); const cg=$('newAssetCoinGeckoId').value.trim().toLowerCase();
+function clearAssetForm(){$('newAssetSymbol').value='';$('newAssetName').value='';$('newAssetType').value='CRYPTO';$('newAssetIsCurrency').value='false';$('newAssetCmcId').value='';$('newAssetCoinGeckoId').value='';resetAssetForm();$('newAssetType').dispatchEvent(new Event('change'));}
+function assetPriceSource(asset){return asset.type==='FIAT'?(asset.symbol==='USD'?'internal':'frankfurter'):'coinmarketcap';}
+async function persistAssetToSupabase(asset, mode='upsert'){
+  if(typeof window.cryptoArbitrageEnsureAuth!=='function'||typeof window.cryptoArbitrageApiRequest!=='function')throw new Error('O painel Trades ainda está inicializando. Recarregue a página e tente novamente.');
+  const ctx=await window.cryptoArbitrageEnsureAuth({requireMfa:true});
+  if(!ctx?.userId)throw new Error('Faça login para gerenciar ativos.');
+  const payload={
+    symbol:asset.symbol,user_id:asset.user_id||ctx.userId,name:asset.name,type:asset.type,
+    cmc_id:asset.type==='CRYPTO'?(Number(asset.cmc_id)||null):null,
+    coingecko_id:asset.type==='CRYPTO'?(asset.coingecko_id||null):null,
+    is_currency:!!asset.is_currency,enabled:asset.enabled!==false,base_quote:'USD',
+    price_source:assetPriceSource(asset)
+  };
+  if(mode==='patch'){
+    const result=await window.cryptoArbitrageApiRequest('/rest/v1/arbitrage_assets?symbol=eq.'+encodeURIComponent(asset.symbol)+'&user_id=eq.'+encodeURIComponent(ctx.userId),{
+      method:'PATCH',headers:{Prefer:'return=representation'},body:JSON.stringify(payload)
+    });
+    if(!Array.isArray(result)||!result.length)throw new Error('O Supabase não confirmou a alteração do ativo.');
+    return result[0];
+  }
+  const result=await window.cryptoArbitrageApiRequest('/rest/v1/arbitrage_assets?on_conflict=symbol',{
+    method:'POST',headers:{Prefer:'resolution=merge-duplicates,return=representation'},body:JSON.stringify(payload)
+  });
+  if(!Array.isArray(result)||!result.length)throw new Error('O Supabase não confirmou o cadastro do ativo.');
+  return result[0];
+}
+async function addAsset(){
+  const symbol=$('newAssetSymbol').value.trim().toUpperCase();
+  const name=$('newAssetName').value.trim()||symbol;
+  const type=$('newAssetType').value;
+  const id=Number($('newAssetCmcId').value);
+  const cg=$('newAssetCoinGeckoId').value.trim().toLowerCase();
+  const isCurrency=$('newAssetIsCurrency').value==='true';
+  const btn=$('addAssetBtn');
+  if(!name){alert('Informe um nome.');return;}
   if(editingAssetSymbol){
-    const a=assetCatalog[editingAssetSymbol]; if(!a){return;}
-    if(!name){alert('Informe um nome.');return;}
-    if(type==='CRYPTO' && (!Number.isInteger(id)||id<=0)){alert('Para Crypto, informe o CoinMarketCap ID.');return;}
-    a.name=name; if(type==='CRYPTO'){a.cmc_id=id;a.coingecko_id=cg||null;} saveModel(); document.dispatchEvent(new CustomEvent('crypto-arb-assets-changed')); resetAssetForm(); clearAssetForm(); renderAssetsView(); populateControls(); render();
-    alert(`${editingAssetSymbol} atualizado.`); return;
+    const current=assetCatalog[editingAssetSymbol]; if(!current)return;
+    if(type==='CRYPTO'&&(!Number.isInteger(id)||id<=0)){alert('Para Crypto, informe o CoinMarketCap ID.');return;}
+    const next={...current,name,is_currency:isCurrency,cmc_id:type==='CRYPTO'?id:null,coingecko_id:type==='CRYPTO'?(cg||null):null};
+    btn.disabled=true;btn.textContent='Salvando…';
+    try{
+      const saved=await persistAssetToSupabase(next,'patch');
+      assetCatalog[editingAssetSymbol]={...current,...saved};
+      saveModel();document.dispatchEvent(new CustomEvent('crypto-arb-assets-changed'));
+      resetAssetForm();clearAssetForm();renderAssetsView();populateControls();render();
+      alert(`${editingAssetSymbol} atualizado no Supabase.`);
+    }catch(e){alert('Não foi possível salvar o ativo: '+(e?.message||String(e)));}
+    finally{btn.disabled=false;btn.textContent=editingAssetSymbol?'Salvar alterações':'Adicionar ativo';}
+    return;
   }
   if(!/^[A-Z0-9.\\-_]{2,15}$/.test(symbol)){alert('Informe um símbolo válido.');return;}
-  if(assetCatalog[symbol] && assetCatalog[symbol].enabled!==false){alert(`${symbol} já está cadastrado. Use Editar para alterar seus dados.`);return;}
-  if(type==='CRYPTO' && (!Number.isInteger(id)||id<=0)){alert('Para Crypto, informe o CoinMarketCap ID.');return;}
-  assetCatalog[symbol]={symbol,name,type,cmc_id:type==='CRYPTO'?id:null,coingecko_id:type==='CRYPTO'?(cg||null):null,enabled:true,base_quote:'USD'};
-  saveModel();document.dispatchEvent(new CustomEvent('crypto-arb-assets-changed'));renderAssetsView();populateControls();render();clearAssetForm();
-  if(type==='CRYPTO'){
-    const ok=confirm(`${symbol} foi cadastrado. Quer carregar agora o histórico de até ${HISTORY_TARGET_DAYS} dias?`);
-    if(ok) loadAssetHistory(symbol);
-  }
+  if(assetCatalog[symbol]&&assetCatalog[symbol].enabled!==false){alert(`${symbol} já está cadastrado. Use Editar para alterar seus dados.`);return;}
+  if(type==='CRYPTO'&&(!Number.isInteger(id)||id<=0)){alert('Para Crypto, informe o CoinMarketCap ID.');return;}
+  const next={symbol,name,type,cmc_id:type==='CRYPTO'?id:null,coingecko_id:type==='CRYPTO'?(cg||null):null,is_currency:isCurrency,enabled:true,base_quote:'USD'};
+  btn.disabled=true;btn.textContent='Salvando…';
+  try{
+    const saved=await persistAssetToSupabase(next,'upsert');
+    assetCatalog[symbol]={...defaultAsset(symbol),...next,...saved};
+    saveModel();document.dispatchEvent(new CustomEvent('crypto-arb-assets-changed'));
+    renderAssetsView();populateControls();render();clearAssetForm();
+    if(type==='CRYPTO'){
+      const ok=confirm(`${symbol} foi cadastrado. Quer carregar agora o histórico de até ${HISTORY_TARGET_DAYS} dias?`);
+      if(ok) await loadAssetHistory(symbol);
+    }
+  }catch(e){alert('Não foi possível salvar o ativo: '+(e?.message||String(e)));}
+  finally{btn.disabled=false;btn.textContent='Adicionar ativo';}
 }
-function toggleAsset(symbol){const a=assetCatalog[symbol];if(!a)return;if(a.enabled!==false && assetIsUsed(symbol)){alert(`${symbol} está sendo usado por uma arbitragem e não pode ser inativado nesta etapa.`);return}a.enabled=a.enabled===false;saveModel();document.dispatchEvent(new CustomEvent('crypto-arb-assets-changed'));populateControls();renderAssetsView();render();}
-function historyProxyUrl(symbol){const id=assetCatalog[symbol]?.cmc_id;if(!id)throw new Error(`CMC ID não cadastrado para ${symbol}`);const end=Math.floor(Date.now()/1000);const start=end-HISTORY_TARGET_DAYS*86400;const url=`https://api.coinmarketcap.com/data-api/v3.1/cryptocurrency/historical?id=${id}&convertId=2781&timeStart=${start}&timeEnd=${end}&interval=1d`;return 'https://corsproxy.io/?url='+encodeURIComponent(url);}
+async function toggleAsset(symbol){
+  const a=assetCatalog[symbol];if(!a)return;
+  if(a.enabled!==false&&assetIsUsed(symbol)){alert(`${symbol} está sendo usado por uma arbitragem e não pode ser inativado nesta etapa.`);return;}
+  const next={...a,enabled:a.enabled===false};
+  try{
+    const saved=await persistAssetToSupabase(next,'patch');
+    assetCatalog[symbol]={...a,...saved};
+    saveModel();document.dispatchEvent(new CustomEvent('crypto-arb-assets-changed'));
+    populateControls();renderAssetsView();render();
+  }catch(e){alert('Não foi possível alterar o status do ativo: '+(e?.message||String(e)));}
+}
+function historyProxyUrl(symbol){
+  const id=assetCatalog[symbol]?.cmc_id;
+  if(!id)throw new Error(`CMC ID não cadastrado para ${symbol}`);
+  const cfg=window.CRYPTO_ARB_SUPABASE_CONFIG||{};
+  const base=String(cfg.url||'').replace(/\/$/,'');
+  if(!base||!cfg.anonKey)throw new Error('Serviço de histórico não configurado.');
+  return base+'/functions/v1/live-prices?action=history&cmc_id='+encodeURIComponent(id)+'&days='+HISTORY_TARGET_DAYS;
+}
 function parseHistoricalResponse(payload){
   const quotes=payload?.data?.quotes||[]; if(!Array.isArray(quotes))return [];
   const out=[];
@@ -599,7 +685,8 @@ async function loadAssetHistory(symbol){
   const btns=[...document.querySelectorAll(`[data-symbol="${symbol}"][data-asset-action="load"]`)];
   btns.forEach(b=>{b.disabled=true;b.textContent='Carregando…'});
   try{
-    const res=await fetch(historyProxyUrl(symbol),{cache:'no-store'});
+    const cfg=window.CRYPTO_ARB_SUPABASE_CONFIG||{};
+    const res=await fetch(historyProxyUrl(symbol),{cache:'no-store',headers:{apikey:cfg.anonKey,Accept:'application/json'}});
     if(!res.ok)throw new Error('HTTP '+res.status);
     const payload=await res.json();
     if(payload?.status?.error_code && Number(payload.status.error_code)!==0)throw new Error(payload.status.error_message||`CMC error ${payload.status.error_code}`);
@@ -988,6 +1075,7 @@ function applyFreshStartReset(){
 (async function init(){
   applyFreshStartReset();
   loadLocal();
+  await refreshAssetCatalogRemote();
   syncKnownAssetMetadata();
   migrateModel();
   ensureActiveArbitrage();
@@ -996,6 +1084,12 @@ function applyFreshStartReset(){
   populateControls();
   renderArbitrageSelector();
   $('newAssetType').dispatchEvent(new Event('change'));
+  $('newAssetSymbol').addEventListener('input',()=>{
+    const symbol=$('newAssetSymbol').value.trim().toUpperCase();
+    if(['BRL','BTC','EUR','USD'].includes(symbol))$('newAssetIsCurrency').value='true';
+    else if(!editingAssetSymbol)$('newAssetIsCurrency').value='false';
+  });
+  $('newAssetIsCurrency').value='false';
   setView('arbitragens');
   render();
   updateLiveStatus();
