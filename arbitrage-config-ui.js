@@ -260,7 +260,7 @@
     $('cfgReference').value = row?.reference_unit || 'USD';
     $('cfgAnchor').value = row?.anchor_symbol || 'ADA';
     $('cfgLookback').value = String(row?.default_lookback_days || 60);
-    renderComparatives(row?.comparative_symbols || ['NIGHT','SNEK'], !!row?.auto_monitoring_enabled);
+    renderComparatives(row ? (row.comparative_symbols || []) : [], !!row?.auto_monitoring_enabled);
     $('cfgMonitor').checked = !!row?.auto_monitoring_enabled;
     $('cfgMonitor').disabled = !row;
     $('cfgDelete').classList.toggle('hidden', !row || !!row.auto_monitoring_enabled);
