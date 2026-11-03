@@ -252,7 +252,7 @@ async function refreshAssetCatalogRemote(){
   if(!base||!cfg.anonKey)return false;
   try{
     const url=base+'/rest/v1/arbitrage_assets?select=symbol,user_id,name,type,cmc_id,coingecko_id,is_currency,enabled,base_quote,price_source&order=symbol.asc';
-    const res=await fetch(url,{headers:{apikey:cfg.anonKey,Authorization:'Bearer '+cfg.anonKey,Accept:'application/json'},cache:'no-store'});
+    const res=await fetch(url,{headers:{apikey:cfg.anonKey,Accept:'application/json'},cache:'no-store'});
     if(!res.ok)throw new Error('HTTP '+res.status);
     const remote=await res.json();
     if(!Array.isArray(remote))throw new Error('Resposta inválida do catálogo de ativos.');
