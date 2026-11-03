@@ -141,7 +141,7 @@
       await auth(false);
       const [configRows, assetRows] = await Promise.all([
         request('/rest/v1/arbitrage_configurations?select=id,user_id,name,reference_unit,anchor_symbol,comparative_symbols,default_lookback_days,auto_monitoring_enabled,created_at,updated_at&order=created_at.asc'),
-        request('/rest/v1/arbitrage_assets?select=symbol,name,type,cmc_id,coingecko_id,enabled,price_source&order=symbol.asc')
+        request('/rest/v1/arbitrage_assets?select=symbol,name,type,cmc_id,coingecko_id,is_currency,enabled,price_source&order=symbol.asc')
       ]);
       records = Array.isArray(configRows) ? configRows : [];
       assets = Array.isArray(assetRows) ? assetRows : [];
@@ -287,6 +287,7 @@
         symbol, user_id:ctx.userId, name:a.name || symbol, type,
         cmc_id:type === 'CRYPTO' ? (Number(a.cmc_id) || null) : null,
         coingecko_id:a.coingecko_id || COINGECKO[symbol] || null,
+        is_currency:!!a.is_currency,
         enabled:a.enabled !== false,
         base_quote:'USD',
         price_source:type === 'FIAT' ? (symbol === 'USD' ? 'internal' : 'frankfurter') : 'coinmarketcap'
@@ -302,7 +303,7 @@
     });
     lastAssetSignature = signature;
     lastLocalAssetSignature = JSON.stringify(local);
-    assets = await request('/rest/v1/arbitrage_assets?select=symbol,name,type,cmc_id,coingecko_id,enabled,price_source&order=symbol.asc');
+    assets = await request('/rest/v1/arbitrage_assets?select=symbol,name,type,cmc_id,coingecko_id,is_currency,enabled,price_source&order=symbol.asc');
   }
 
   async function saveConfig(event) {
