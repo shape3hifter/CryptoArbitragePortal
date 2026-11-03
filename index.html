@@ -733,7 +733,7 @@ async function fetchLivePrices(){
   try{
     const needed=[settings.anchor,...settings.comps];
     const cfg=window.CRYPTO_ARB_SUPABASE_CONFIG||{};
-    const base=String(cfg.url||'').replace(/\\/$/,'');
+    const base=String(cfg.url||'').replace(/\/$/,'');
     if(!base||!cfg.anonKey)throw new Error('Serviço de cotação não configurado.');
     const ids=needed.map(symbol=>String(assetCatalog[symbol]?.coingecko_id||'').trim());
     if(ids.some(id=>!id))throw new Error('Um ou mais ativos ainda não possuem CoinGecko ID cadastrado.');
