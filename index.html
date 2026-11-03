@@ -77,7 +77,7 @@ main{max-width:1180px;margin:0 auto;padding:28px 20px 60px}.top{display:flex;jus
     </div>
 
     <div class="card section">
-      <div class="section-head"><h2>Biblioteca cadastrada</h2><div class="note">Histórico local ≥ 120 dias = utilizável estatisticamente</div></div>
+      <div class="section-head"><h2>Biblioteca cadastrada</h2><div class="note">Histórico sincronizado ≥ 120 dias = utilizável estatisticamente</div></div>
       <div id="assetLibrary" class="asset-grid"></div>
     </div>
   </section>
@@ -133,7 +133,7 @@ main{max-width:1180px;margin:0 auto;padding:28px 20px 60px}.top{display:flex;jus
 
   </section>
 
-  <div class="foot">MVP com base CSV. A coleta de preços é feita automaticamente pelo GitHub Actions via CoinMarketCap. A base oficial fica no data.csv. Históricos carregados manualmente para novos ativos podem permanecer locais até serem incorporados à base oficial. BRL/EUR são armazenados como BRL/USD e EUR/USD. Registros futuros presentes no CSV são mantidos, mas não entram no snapshot atual até que a data/hora seja alcançada.</div>
+  <div class="foot">MVP com base CSV. A coleta de preços é feita automaticamente pelo GitHub Actions via CoinMarketCap. A base oficial fica no data.csv. Históricos complementares carregados manualmente são persistidos no Supabase e sincronizados ao portal; não alteram o data.csv oficial. BRL/EUR são armazenados como BRL/USD e EUR/USD. Registros futuros presentes no CSV são mantidos, mas não entram no snapshot atual até que a data/hora seja alcançada.</div>
 </main>
 <script>
 // Stage 1 data model: USD is the internal base currency; assets and arbitrages are now explicit entities.
@@ -385,6 +385,7 @@ function sampleSD(a){if(a.length<2)return 0;const m=a.reduce((x,y)=>x+y,0)/a.len
 function signal(z){return z<=-1.5?'BUY':z>=1.5?'SELL':'HOLD'}
 function latest(asset){const a=calcAt(asset); return a[a.length-1]||null}
 function fmt(x,d=6){return Number.isFinite(x)?x.toLocaleString('en-US',{maximumFractionDigits:d}):'—'}
+function fmtSignificant(x,d=8){return Number.isFinite(x)?x.toLocaleString('en-US',{maximumSignificantDigits:d}):'—'}
 function niceDate(s){
   const value=String(s||'');
   const m=value.match(/^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2}))?/);
@@ -547,7 +548,7 @@ function renderAssetsView(){
   const pill=$('assetBasePill'),meta=$('assetBaseMeta');
   pill.className='capture-status-pill '+(historic===cryptoCount && cryptoCount>0?'good':'warn');
   pill.textContent=cryptoCount>0 && historic===cryptoCount?'OK':'Parcial';
-  meta.textContent=`${formatCount(historic)} de ${formatCount(cryptoCount)} crypto(s) com pelo menos ${MIN_HISTORY_DAYS} dias de histórico local. USD é a base interna.`;
+  meta.textContent=`${formatCount(historic)} de ${formatCount(cryptoCount)} crypto(s) com pelo menos ${MIN_HISTORY_DAYS} dias de histórico sincronizado. USD é a base interna.`;
   const list=$('assetLibrary');
   if(!all.length){list.innerHTML='<div class="asset-empty">Nenhum ativo cadastrado.</div>';return;}
   list.innerHTML=`<div class="asset-row asset-row-head"><div>Ativo</div><div>Tipo</div><div>Moeda</div><div>CMC ID</div><div>Histórico</div><div>Status</div><div>Ações</div></div>`+all.map(([s,a])=>{
@@ -1099,7 +1100,7 @@ function render(){
   ensureSettings(); renderArbitrageSelector(); renderChecks();
   const current=usable(); const latestDate=current.filter(r=>r.symbol===settings.anchor).at(-1)?.date||'—';
   $('metrics').innerHTML=`<div class="metric"><div class="k">Anchor</div><div class="v">${settings.anchor}</div><div class="s">unidade de comparação</div></div><div class="metric"><div class="k">Janela</div><div class="v">${settings.lookback}D</div><div class="s">AVG + STDEV.S</div></div><div class="metric"><div class="k">Comparativos</div><div class="v">${settings.comps.length}</div><div class="s">ativos selecionados</div></div><div class="metric"><div class="k">Snapshot</div><div class="v">${latestDate}</div><div class="s">último registro utilizável</div></div>`;
-  $('signals').innerHTML=settings.comps.map(a=>{const d=latest(a);const temp=temporarySnapshot?' <span class="temporary-badge">TEMP</span>':'';return `<div class="signal"><div class="signal-head"><div class="signal-name">${a} / ${settings.anchor}</div><div class="pill ${d?.signal||'HOLD'}">${d?.signal||'—'}</div></div><div class="signal-main">${d?fmt(d.ratio,8):'—'} ${settings.anchor}${temp}</div><div class="signal-sub">${temporarySnapshot?'Cotação atual temporária somada ao histórico oficial':'Valor atual do '+a+' comparado ao crypto anchor'}</div><div class="mini"><div><div class="lbl">AVG ${settings.lookback}D</div><div class="val">${fmt(d?.avg,8)}</div></div><div><div class="lbl">STDEV.S</div><div class="val">${fmt(d?.sd,8)}</div></div><div><div class="lbl">Z-Score</div><div class="val">${fmt(d?.z,3)}</div></div></div></div>`}).join('');
+  $('signals').innerHTML=settings.comps.map(a=>{const d=latest(a);const temp=temporarySnapshot?' <span class="temporary-badge">TEMP</span>':'';return `<div class="signal"><div class="signal-head"><div class="signal-name">${a} / ${settings.anchor}</div><div class="pill ${d?.signal||'HOLD'}">${d?.signal||'—'}</div></div><div class="signal-main">${d?fmtSignificant(d.ratio):'—'} ${settings.anchor}${temp}</div><div class="signal-sub">${temporarySnapshot?'Cotação atual temporária somada ao histórico oficial':'Valor atual do '+a+' comparado ao crypto anchor'}</div><div class="mini"><div><div class="lbl">AVG ${settings.lookback}D</div><div class="val">${fmtSignificant(d?.avg)}</div></div><div><div class="lbl">STDEV.S</div><div class="val">${fmtSignificant(d?.sd)}</div></div><div><div class="lbl">Z-Score</div><div class="val">${fmt(d?.z,3)}</div></div></div></div>`}).join('');
   const analysisPoints=priceMap(); const zsets=settings.comps.map(a=>{const d=calcAt(a,analysisPoints).slice(-CHART_HISTORY_DAYS);return {name:a,values:d.map(x=>x.z),dates:d.map(x=>x.dt)}}); drawChart('zChart',zsets,[-1.5,1.5]); $('zLegend').innerHTML=chartLegendHTML(zsets,name=>name,`limites ±1,5 · gráfico ${CHART_HISTORY_DAYS}D · estatística rolling ${settings.lookback}D`);
   const rsets=settings.comps.map(a=>{const d=calcAt(a,analysisPoints).slice(-CHART_HISTORY_DAYS); const valid=d.map(x=>x.ratio).filter(Number.isFinite); const base=valid.find(Number.isFinite)||1; return {name:a,values:d.map(x=>Number.isFinite(x.ratio)?(x.ratio/base)*100:null),dates:d.map(x=>x.dt)}}); drawChart('ratioChart',rsets,null); $('ratioLegend').innerHTML=chartLegendHTML(rsets,name=>name+`/${settings.anchor}`,`100 = primeiro ponto visível · gráfico ${CHART_HISTORY_DAYS}D`);
   renderTable(analysisPoints);
