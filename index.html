@@ -878,45 +878,6 @@ function updateLiveStatus(){
   pill.textContent='Temporário';meta.textContent=`${temporaryDisplayTime()} · CMC · cotação atual · não gravada no data.csv`;
   box.innerHTML=[settings.anchor,...settings.comps].map(s=>{const display=convertUSDToReference(Number(temporarySnapshot.prices[s]),temporarySnapshot.dt); return `<div class="live-price"><div class="sym">${s} / ${settings.fiat}</div><div class="val">${fmt(display,10)}</div></div>`}).join('');
 }
-async function fetchLivePrices(){
-  if(liveInFlight)return;
-  liveInFlight=true;
-  const btn=$('liveBtn');
-  btn.disabled=true;
-  btn.textContent='Consultando…';
-  try{
-    const needed=[settings.anchor,...settings.comps];
-    const cfg=window.CRYPTO_ARB_SUPABASE_CONFIG||{};
-    const base=String(cfg.url||'').replace(/\/$/,'');
-    if(!base||!cfg.anonKey)throw new Error('Serviço de cotação não configurado.');
-    const ids=needed.map(symbol=>String(assetCatalog[symbol]?.coingecko_id||'').trim());
-    if(ids.some(id=>!id))throw new Error('Um ou mais ativos ainda não possuem CoinGecko ID cadastrado.');
-    const endpoint=base+'/functions/v1/live-prices?ids='+encodeURIComponent(ids.join(','))+'&vs_currencies=usd';
-    const res=await fetch(endpoint,{method:'GET',cache:'no-store',headers:{apikey:cfg.anonKey,Accept:'application/json'}});
-    let payload={};
-    try{payload=await res.json();}catch{}
-    if(!res.ok)throw new Error(payload?.error||payload?.message||('HTTP '+res.status));
-    const prices={};
-    needed.forEach((symbol,index)=>{
-      const value=Number(payload?.[ids[index]]?.usd);
-      if(Number.isFinite(value)&&value>0)prices[symbol]=value;
-    });
-    if(!needed.every(symbol=>Number.isFinite(prices[symbol])))throw new Error('O serviço não retornou cotação para todos os ativos selecionados.');
-    const now=new Date();
-    temporarySnapshot={rawTime:now.toISOString(),dt:localNowISO(),fiat:'USD',prices};
-    updateLiveStatus();
-    invalidateAnalysisCache();
-    render();
-  }catch(e){
-    $('liveStatusPill').textContent='Erro';
-    $('liveStatusMeta').textContent='Não foi possível consultar a cotação atual: '+(e?.message||String(e));
-    $('livePrices').innerHTML='';
-  }finally{
-    liveInFlight=false;
-    btn.disabled=false;
-    btn.textContent='⚡ Cotação agora';
-  }
-}
 function maybeClearTemporaryAfterRemote(){if(temporarySnapshot&&hasOfficialSnapshotForDate(temporarySnapshot.dt.slice(0,10)))clearTemporarySnapshot();}
 const CHART_SERIES_COLORS=['#56B4E9','#E69F00','#009E73','#CC79A7','#D55E00'];
 function chartSeriesColor(index){return CHART_SERIES_COLORS[index%CHART_SERIES_COLORS.length]}
@@ -1048,21 +1009,42 @@ function updateLiveStatus(){
 }
 async function fetchLivePrices(){
   if(liveInFlight)return;
-  liveInFlight=true;const btn=$('liveBtn');btn.disabled=true;btn.textContent='Consultando…';
+  liveInFlight=true;
+  const btn=$('liveBtn');
+  btn.disabled=true;
+  btn.textContent='Consultando…';
   try{
     const needed=[settings.anchor,...settings.comps];
-    const ids=needed.map(s=>assetCatalog[s]?.cmc_id).filter(Number.isInteger);
-    if(ids.length!==needed.length)throw new Error('Um ou mais ativos desta arbitragem ainda não possuem CoinMarketCap ID cadastrado.');
-    const url=`${CMC_LIVE_BASE}?ids=${ids.join(',')}&convert=USD`;
-    const res=await fetch('https://corsproxy.io/?url='+encodeURIComponent(url),{cache:'no-store'});if(!res.ok)throw new Error('HTTP '+res.status);
-    const payload=await res.json(),list=Array.isArray(payload.data)?payload.data:[],prices={};
-    const idToSymbol={}; needed.forEach(s=>{idToSymbol[assetCatalog[s].cmc_id]=s;});
-    for(const item of list){const symbol=idToSymbol[item.id],price=Number(item.price);if(symbol&&Number.isFinite(price)&&price>0)prices[symbol]=price;}
-    if(!needed.every(s=>Number.isFinite(prices[s])))throw new Error('Cotação agora ainda não está disponível para todos os ativos desta arbitragem.');
-    const now=new Date();temporarySnapshot={rawTime:now.toISOString(),dt:localNowISO(),fiat:'USD',prices};
-    updateLiveStatus();render();
-  }catch(e){$('liveStatusPill').textContent='Erro';$('liveStatusMeta').textContent=`Não foi possível consultar a cotação atual: ${e.message}`;$('livePrices').innerHTML='';}
-  finally{liveInFlight=false;btn.disabled=false;btn.textContent='⚡ Cotação agora';}
+    const cfg=window.CRYPTO_ARB_SUPABASE_CONFIG||{};
+    const base=String(cfg.url||'').replace(/\/$/,'');
+    if(!base||!cfg.anonKey)throw new Error('Serviço de cotação não configurado.');
+    const ids=needed.map(symbol=>String(assetCatalog[symbol]?.coingecko_id||'').trim());
+    if(ids.some(id=>!id))throw new Error('Um ou mais ativos ainda não possuem CoinGecko ID cadastrado.');
+    const endpoint=base+'/functions/v1/live-prices?ids='+encodeURIComponent(ids.join(','))+'&vs_currencies=usd';
+    const res=await fetch(endpoint,{method:'GET',cache:'no-store',headers:{apikey:cfg.anonKey,Accept:'application/json'}});
+    let payload={};
+    try{payload=await res.json();}catch{}
+    if(!res.ok)throw new Error(payload?.error||payload?.message||('HTTP '+res.status));
+    const prices={};
+    needed.forEach((symbol,index)=>{
+      const value=Number(payload?.[ids[index]]?.usd);
+      if(Number.isFinite(value)&&value>0)prices[symbol]=value;
+    });
+    if(!needed.every(symbol=>Number.isFinite(prices[symbol])))throw new Error('O serviço não retornou cotação para todos os ativos selecionados.');
+    const now=new Date();
+    temporarySnapshot={rawTime:now.toISOString(),dt:localNowISO(),fiat:'USD',prices};
+    updateLiveStatus();
+    invalidateAnalysisCache();
+    render();
+  }catch(e){
+    $('liveStatusPill').textContent='Erro';
+    $('liveStatusMeta').textContent='Não foi possível consultar a cotação atual: '+(e?.message||String(e));
+    $('livePrices').innerHTML='';
+  }finally{
+    liveInFlight=false;
+    btn.disabled=false;
+    btn.textContent='⚡ Cotação agora';
+  }
 }
 function maybeClearTemporaryAfterRemote(){if(temporarySnapshot&&hasOfficialSnapshotForDate(temporarySnapshot.dt.slice(0,10)))clearTemporarySnapshot();}
 
