@@ -1,49 +1,66 @@
-# Crypto Arbitrage Portal — Automated MVP
+# Crypto Arbitrage Portal
 
-Este pacote adiciona automação diária ao MVP anterior.
+Portal pessoal para análise de valor relativo entre criptoativos, acompanhamento de operações e monitoramento automatizado de estratégias.
 
-## O que mudou
+## Arquitetura atual
 
-- O portal continua usando `data.csv` como base histórica.
-- `config.json` define Fiat, Crypto Anchor e 2–5 comparativos.
-- `scripts/capture_prices.py` consulta as fontes configuradas e grava no `data.csv` a observação de referência das 21:00 BRT, por convenção do modelo.
-- `.github/workflows/capture-prices.yml` agenda a captura diariamente às 00:30 UTC, equivalente a 21:30 em São Paulo. A execução ocorre após o horário de referência para dar tempo à disponibilidade das fontes; o dado gravado continua representando 21:00 BRT.
-- `capture-log.json` registra o horário real da execução e o status da captura.
-- `.github/workflows/deploy-pages.yml` publica o portal no GitHub Pages.
+- **Interface:** aplicação estática publicada no GitHub Pages. `index.html` contém a interface principal; `scripts/build_site.py` monta a versão publicável em `dist/`.
+- **Persistência:** Supabase/PostgreSQL armazena o catálogo central de ativos, configurações de arbitragem, trades e histórico complementar de preços.
+- **Histórico oficial:** `data.csv` mantém a série diária oficial usada pelo portal. A observação de referência é 21:00 no horário de São Paulo.
+- **Catálogo:** `public.arbitrage_assets` é a fonte central dos metadados e identificadores CoinMarketCap/CoinGecko. `public.arbitrage_configurations` armazena as estratégias permanentes.
+- **Cotações atuais:** a Edge Function `live-prices` valida os CoinGecko IDs contra os ativos habilitados no catálogo do Supabase antes de consultar a CoinGecko. Novos ativos podem ser utilizados sem uma lista fixa no código.
+- **Histórico complementar:** históricos carregados para ativos adicionados manualmente são armazenados em `arbitrage_asset_price_history`; não são incorporados ao `data.csv`.
+- **Monitoramento:** a Edge Function `hourly-arbitrage-v4` processa estratégias com monitoramento automático habilitado e registra os eventos/notificações correspondentes.
 
-## API CMC
+## Rotinas do GitHub Actions
 
-A versão Keyless Public API da CoinMarketCap funciona sem API key para endpoints suportados. O MVP usa o endpoint `GET /public-api/v3/cryptocurrency/quotes/latest`.
+| Workflow | Função |
+|---|---|
+| `.github/workflows/deploy-pages.yml` | Constrói e publica o portal no GitHub Pages |
+| `.github/workflows/capture-prices.yml` | Executa a captura diária e atualiza `data.csv` e `capture-log.json` |
+| `.github/workflows/validate-configurations.yml` | Compila scripts, executa testes, constrói o portal e verifica JavaScript |
 
-## Como ativar
+A captura diária é agendada para 00:30 UTC (21:30 em São Paulo). O horário de referência gravado continua sendo 21:00. O processo consulta o catálogo central do Supabase; se ele estiver indisponível ou não contiver os dados necessários, a captura falha explicitamente, sem recorrer a uma lista local divergente.
 
-1. Crie um repositório GitHub para o conteúdo deste pacote e coloque os arquivos na branch `main`.
-2. Em `config.json`, ajuste `anchor` e `comparatives` quando desejar.
-3. Em Settings → Pages, selecione GitHub Actions como fonte de publicação.
-4. O workflow `capture-prices.yml` executará diariamente às 00:30 UTC (21:30 em São Paulo), buscará a observação de referência das 21:00 BRT e fará commit do `data.csv` atualizado.
-5. O workflow `deploy-pages.yml` publica o portal e também o atualiza quando `data.csv` mudar.
+## Estrutura principal
 
-## Teste manual
+- `index.html` — interface principal, análise estatística e catálogo de ativos.
+- `arbitrage-config-ui.js` — cadastro e gestão das estratégias permanentes.
+- `trades-ui.js` — autenticação/MFA, registro e acompanhamento de trades e simulação de fechamento.
+- `runtime-fixes.js` — ajustes de execução e compatibilidade de cotações.
+- `simulation-display-fix.js`, `trades-launcher.js`, `trades-arbitrage-refresh.js`, `trades-runtime-guard.js` — módulos auxiliares instalados pelo workflow de publicação.
+- `scripts/capture_prices.py`, `scripts/capture_prices_runner.py` — captura e validação do histórico diário.
+- `scripts/build_site.py` — construção do diretório publicável.
+- `supabase/migrations/` — histórico versionado das alterações do banco.
+- `supabase/functions/` — código-fonte das Edge Functions.
+- `tests/` — testes automatizados da captura.
 
-Em GitHub Actions, rode `Capture daily prices` → `Run workflow`.
+## Construção e teste local
 
-Localmente, execute:
+Requisitos: Python 3.12+ e Node.js para as verificações JavaScript.
 
 ```bash
-python3 scripts/capture_prices.py
+python -m py_compile scripts/capture_prices.py scripts/capture_prices_runner.py scripts/build_site.py
+python -m unittest discover -s tests -v
+python scripts/build_site.py
+node --check arbitrage-config-ui.js
+node --check trades-ui.js
+node --check runtime-fixes.js
 ```
 
-## Observação sobre o horário
+O diretório `dist/` é gerado durante a construção e não é a fonte de edição.
 
-GitHub Actions schedules podem sofrer atrasos ocasionais. Por isso, o script registra o `executed_at` e o status da captura em `capture-log.json`. O horário de execução do workflow é 00:30 UTC (21:30 em São Paulo), enquanto o `data.csv` mantém a convenção de negócio de 21:00 BRT para a observação diária.
+## Segurança e configuração
 
+- `supabase/config.js` contém somente a URL do projeto e a chave pública (publishable/anon), apropriada para uso no navegador.
+- **Nunca** grave a `service_role key`, chaves secretas de APIs ou credenciais privadas no repositório ou em arquivos publicados.
+- Segredos usados pelas Edge Functions devem permanecer nas variáveis de ambiente/Secrets do Supabase.
+- As tabelas expostas usam Row Level Security (RLS). As operações protegidas do portal exigem autenticação e MFA conforme as políticas e o fluxo da aplicação.
 
-## Configurações de arbitragem
+## Fontes de verdade
 
-O portal mantém as configurações permanentes das estratégias no Supabase, na tabela `arbitrage_configurations`. A tabela `arbitrage_assets` funciona como catálogo central de ativos e inclui os identificadores necessários às fontes de preços.
-
-A tela **Configurações** permite criar, editar e habilitar o monitoramento automático. Novas estratégias começam com o monitoramento desligado. As alterações experimentais na tela **Arbitragens** são mantidas apenas durante a sessão e não modificam os parâmetros permanentes.
-
-O motor horário lê as estratégias habilitadas diretamente do Supabase, incluindo a janela estatística individual. O processo diário de captura consulta exclusivamente o catálogo central do Supabase. `config.json` contém apenas parâmetros operacionais da captura, como fuso e horário; se o catálogo central estiver indisponível, a captura falha explicitamente em vez de recorrer a uma lista local divergente.
-
-As alterações de configuração exigem uma sessão autenticada com MFA (AAL2), conforme as políticas RLS do banco.
+- Código e rotinas de publicação: branch `main`.
+- Configurações persistentes e catálogo de ativos: Supabase.
+- Histórico diário oficial: `data.csv`.
+- Histórico complementar de ativos: Supabase, em tabela própria.
+- `_Versões não utilizadas/` contém implementações históricas preservadas e não participa da construção ou publicação atual.

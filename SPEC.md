@@ -1,91 +1,92 @@
-# Especificação — MVP automatizado
+# Especificação — Crypto Arbitrage Portal
 
-## Objetivo
+## 1. Objetivo
 
-Eliminar o trabalho operacional diário de abrir as páginas do CoinMarketCap e copiar as cotações de ADA, NIGHT e SNEK às 21:00 BRT para a base histórica do portal.
+Analisar relações de valor relativo entre criptoativos, registrar operações reais, simular fechamentos e monitorar estratégias configuradas pelo usuário.
 
-## Fonte
+O modelo compara cada ativo com uma âncora cripto. A unidade de referência (USD, BRL ou EUR) é independente e usada para exibição/conversão de preços.
 
-CoinMarketCap Keyless Public API:
+## 2. Fontes de dados e persistência
 
-`https://pro-api.coinmarketcap.com/public-api/v3/cryptocurrency/quotes/latest`
+### Histórico oficial
 
-A consulta é feita por símbolo, com `convert=USD`.
+- Arquivo: `data.csv`.
+- Observação de referência: 21:00 em `America/Sao_Paulo`.
+- Os preços são armazenados em USD; a interface converte para a unidade de referência selecionada.
+- A captura é executada por `scripts/capture_prices_runner.py`, que consulta o catálogo central de ativos do Supabase.
+- O workflow diário roda às 00:30 UTC (21:30 em São Paulo), após o horário de referência.
+- `capture-log.json` registra o resultado e o horário real da execução.
 
-## Agendamento
+### Histórico complementar
 
-GitHub Actions:
+Históricos de ativos adicionados manualmente são consultados via Edge Function `live-prices` e persistidos em `public.arbitrage_asset_price_history`. Esses registros são sincronizados pelo portal e permanecem separados do histórico oficial `data.csv`.
 
-`0 0 * * *` (UTC) → 21:00 em America/Sao_Paulo.
+### Catálogo central
 
-O horário oficial do modelo continua sendo 21:00 BRT. O horário real de execução é armazenado em `capture-log.json`.
+A tabela `public.arbitrage_assets` armazena símbolo, nome, tipo, identificadores CMC/CoinGecko, estado habilitado, metadados de moeda e fonte de preço. É a fonte de verdade para resolução de ativos e identificadores de cotação.
 
-## Base histórica
+A tabela `public.arbitrage_configurations` armazena as estratégias permanentes: identificador, nome, unidade de referência, âncora, comparativos, janela estatística e estado do monitoramento automático.
 
-`data.csv`
+`config.json` mantém somente parâmetros operacionais da captura, como unidade base, fuso e horário. Não contém lista de estratégias nem lista de fallback de ativos.
 
-Colunas:
+## 3. Análise estatística
 
-- `date`
-- `time`
-- `fiat`
-- `symbol`
-- `price`
+Para cada data alinhada, a relação é:
 
-O script remove e substitui, sem duplicar, qualquer registro da mesma data/horário/fiat/asset.
+`ratio = preço_do_comparativo / preço_da_âncora`
 
-## Configuração
+A janela estatística é definida na configuração da estratégia.
 
-`config.json`:
+- AVG: média da relação.
+- STDEV.S: desvio-padrão amostral.
+- Z-Score: `(ratio - AVG) / STDEV.S`.
+- BUY: Z-Score menor ou igual a -1,5.
+- HOLD: Z-Score entre -1,5 e +1,5.
+- SELL: Z-Score maior ou igual a +1,5.
 
-- `fiat`: moeda de cotação
-- `timezone`: `America/Sao_Paulo`
-- `capture_time`: `21:00`
-- `anchor`: crypto anchor
-- `comparatives`: 2–5 ativos comparativos
+O gráfico de valor relativo pode ser indexado em 100 para comparação visual; valores absolutos permanecem nos cards e tabelas.
 
-## Validações
+A unidade de referência e a âncora cripto são independentes. Exemplo: para PEPE/ETH e UNI/ETH, a âncora é ETH e a unidade de referência pode continuar sendo USD.
 
-- Todos os ativos configurados precisam retornar preço positivo.
-- Se um ativo falhar, a execução falha e a base não é atualizada.
-- A consulta é repetida até três vezes em caso de falha transitória.
-- O log registra atraso de execução.
+## 4. Cotações atuais
 
-## Camada do portal
+A Edge Function `live-prices` fornece cotações atuais da CoinGecko e históricos consultados na CoinMarketCap. Para cotações atuais, os CoinGecko IDs são validados dinamicamente contra os ativos do tipo CRYPTO habilitados em `arbitrage_assets`. Não existe allowlist fixa de moedas no código implantado.
 
-O portal usa `data.csv` para recalcular:
+O módulo de Trades resolve o CoinGecko ID do ativo a partir do catálogo carregado pelo portal, permitindo simular operações com ativos adicionados posteriormente, desde que estejam habilitados e tenham CoinGecko ID cadastrado.
 
-`ratio = ativo / anchor`
+## 5. Configurações e monitoramento
 
-`AVG = média da janela`
+- A tela **Configurações** cria, edita e habilita estratégias permanentes no Supabase.
+- A tela **Arbitragens** permite experimentação temporária dos parâmetros, sem alterar o cadastro permanente.
+- Novas estratégias começam com monitoramento automático desligado.
+- A ativação depende da disponibilidade do histórico e dos identificadores necessários.
+- A Edge Function `hourly-arbitrage-v4` processa somente estratégias com `auto_monitoring_enabled = true`, respeitando a janela individual.
 
-`STDEV.S = desvio-padrão amostral`
+## 6. Trades
 
-`Z = (ratio - AVG) / STDEV.S`
+O módulo `trades-ui.js` registra e acompanha trades no PostgreSQL, incluindo ativo âncora, ativo atual, quantidades, relação de entrada, data e resultado de fechamento. O acesso utiliza autenticação e verificação MFA conforme a política do projeto.
 
-`BUY <= -1.5`, `HOLD`, `SELL >= +1.5`.
+A simulação de fechamento consulta preços atuais e calcula o valor potencial na âncora. É uma simulação: não grava o trade e não incorpora taxas, slippage, spread ou impacto de mercado.
 
-O gráfico de valor relativo é indexado em 100 apenas para comparação visual; os valores absolutos continuam nos cards e tabelas.
+## 7. Publicação e testes
 
+- Branch de produção: `main`.
+- GitHub Pages publica o diretório `dist/`, construído por `scripts/build_site.py`.
+- `.github/workflows/deploy-pages.yml`: publicação.
+- `.github/workflows/capture-prices.yml`: captura diária.
+- `.github/workflows/validate-configurations.yml`: compilação, testes automatizados, build e verificações de JavaScript.
 
-## Configuração central de estratégias
+Comandos de validação:
 
-A lista oficial de estratégias está em `public.arbitrage_configurations`. Seus campos principais são `id`, `user_id`, `name`, `reference_unit`, `anchor_symbol`, `comparative_symbols`, `default_lookback_days` e `auto_monitoring_enabled`.
+```bash
+python -m py_compile scripts/capture_prices.py scripts/capture_prices_runner.py scripts/build_site.py
+python -m unittest discover -s tests -v
+python scripts/build_site.py
+node --check arbitrage-config-ui.js
+node --check trades-ui.js
+node --check runtime-fixes.js
+```
 
-O identificador de cada estratégia é estável e é utilizado pelos registros de trades, observações horárias, estados de monitoramento e prévias de notificações. Restrições de chave estrangeira impedem a remoção de estratégias que possuam histórico ou trades associados.
+## 8. Histórico de versões
 
-O catálogo central de ativos está em `public.arbitrage_assets`. Além dos identificadores CoinMarketCap, ele armazena `coingecko_id` e `price_source`, permitindo que a captura e o motor resolvam os ativos sem listas fixas de estratégias no código.
-
-## Portal e análise experimental
-
-A seção **Configurações** grava parâmetros permanentes no Supabase. A seção **Arbitragens** utiliza uma cópia temporária dos parâmetros enquanto o usuário experimenta. Essas mudanças não são persistidas no cadastro; ao recarregar a página, o portal retorna aos padrões salvos.
-
-A disponibilidade para análise é calculada com base no histórico alinhado entre Anchor e comparativos. A disponibilidade de conversão para a unidade de referência é avaliada separadamente. O monitoramento automático é uma decisão explícita, começa desligado em estratégias novas e só pode ser ativado quando houver dados e identificadores de cotação suficientes.
-
-## Motor automático
-
-A Edge Function `hourly-arbitrage-v4` lê as configurações com `auto_monitoring_enabled = true` e utiliza a janela estatística individual. Os preços atuais são obtidos pelos identificadores CoinGecko associados ao catálogo de ativos. O acompanhamento de trades já abertos permanece separado da geração de novas oportunidades.
-
-## Captura diária
-
-`scripts/capture_prices.py` e `scripts/capture_prices_runner.py` preferem o catálogo central de ativos do Supabase. `config.json` mantém parâmetros operacionais e uma lista de fallback para continuidade da captura em caso de indisponibilidade do catálogo.
+Implementações substituídas e ferramentas de bootstrap antigas são preservadas em `_Versões não utilizadas/`. Elas não são referenciadas pelo workflow de build/publicação e não fazem parte da versão operacional.

@@ -7,7 +7,7 @@
     'SOL / BONK / WIF': { id: 'arb-sol-bonk-wif', name: 'SOL / BONK / WIF', anchor: 'SOL', assets: ['BONK', 'WIF'] }
   };
   const LIVE_FN = '/functions/v1/live-prices';
-  const CG_IDS = { ADA: 'cardano', NIGHT: 'midnight-3', SNEK: 'snek', SOL: 'solana', BONK: 'bonk', WIF: 'dogwifcoin' };
+  // Resolve CoinGecko IDs from the portal's enabled Supabase asset catalog.
   // Session persists in this browser profile so closing/reopening the browser
   // does not require a new login. Logout still clears the persisted session.
   const SESSION_KEY = 'cryptoArbSupabaseSessionV3';
@@ -727,7 +727,15 @@
   function ensureSimulationModal() { injectSimulationStyles(); if ($('tradeSimModal')) return; const modal = document.createElement('div'); modal.id = 'tradeSimModal'; modal.className = 'trade-sim-modal hidden'; modal.innerHTML = '<div class="trade-sim-backdrop"></div><div class="trade-sim-dialog" role="dialog" aria-modal="true"><div class="section-head"><div><h2>Simular fechamento</h2><div id="tradeSimSubtitle" class="note"></div></div><button id="tradeSimCloseTop" class="btn" type="button">Fechar</button></div><div id="tradeSimBody"></div><div class="trade-sim-actions"><button id="tradeSimRefresh" class="btn primary" type="button">⚡ Cotação agora</button><button id="tradeSimClose" class="btn" type="button">Fechar</button></div></div></div>'; document.body.appendChild(modal); modal.querySelector('.trade-sim-backdrop').onclick = closeSimulationModal; $('tradeSimCloseTop').onclick = closeSimulationModal; $('tradeSimClose').onclick = closeSimulationModal; $('tradeSimRefresh').onclick = refreshSimulationQuote; }
   function openSimulationModal() { ensureSimulationModal(); $('tradeSimModal').classList.remove('hidden'); $('tradeSimModal').setAttribute('aria-hidden', 'false'); }
   function closeSimulationModal() { $('tradeSimModal')?.classList.add('hidden'); }
-  function assetId(symbol) { return CG_IDS[String(symbol || '').toUpperCase()] || null; }
+  function assetId(symbol) {
+    const normalized = String(symbol || '').toUpperCase();
+    const catalog = typeof window.cryptoArbitrageGetAssetCatalog === 'function'
+      ? window.cryptoArbitrageGetAssetCatalog()
+      : [];
+    const asset = catalog.find(item => String(item?.symbol || '').toUpperCase() === normalized);
+    if (!asset || asset.enabled === false || String(asset.type || asset.asset_type || '').toUpperCase() !== 'CRYPTO') return null;
+    return String(asset.coingecko_id || '').trim() || null;
+  }
   async function fetchLivePrices(symbols) { const normalized = [...new Set(symbols.map(s => String(s || '').toUpperCase()))]; const ids = normalized.map(assetId); if (ids.some(id => !id)) { const symbol = normalized.find((s, i) => !ids[i]); throw new Error(`Não há CoinGecko ID configurado para ${symbol || 'um dos ativos'}.`); } const query = `?ids=${encodeURIComponent(ids.join(','))}&vs_currencies=usd`; const endpoint = `${String(cfg.url || '').replace(/\/$/, '')}${LIVE_FN}${query}`; if (!cfg.url || !cfg.anonKey) throw new Error('Serviço de cotação não configurado.'); let res; try { res = await fetch(endpoint, { cache: 'no-store', headers: { apikey: cfg.anonKey, Accept: 'application/json' } }); } catch (e) { throw new Error(`Falha de conexão com o serviço de cotação: ${e.message || 'Failed to fetch'}`); } if (!res.ok) { let detail = ''; try { const body = await res.json(); detail = body?.error ? `: ${body.error}` : ''; } catch {} if (res.status === 429) throw new Error('Limite temporário da consulta de cotação. Tente novamente em alguns segundos.'); if (res.status === 401) throw new Error('Serviço de cotação recusou a chave pública do Supabase.'); throw new Error(`Serviço de cotação indisponível (HTTP ${res.status})${detail}.`); } const payload = await res.json(); const out = {}; normalized.forEach((symbol, i) => { const price = Number(payload?.[ids[i]]?.usd); if (Number.isFinite(price) && price > 0) out[symbol] = price; }); const missing = normalized.filter(s => !Number.isFinite(out[s])); if (missing.length) throw new Error(`Cotação não disponível para ${missing.join(', ')} agora.`); return out; }
   function renderSimulationLoading(t) { const anchor = String(t.anchor_symbol || '').toUpperCase(); const asset = String(t.current_asset || '').toUpperCase(); $('tradeSimSubtitle').textContent = `${t.strategy} · posição aberta`; $('tradeSimBody').innerHTML = `<div class="trade-sim-meta">Consultando a cotação atual de ${asset} e ${anchor}…</div>`; }
   function renderSimulationError(message) { $('tradeSimBody').innerHTML = `<div class="trade-sim-result"><strong>Não foi possível simular agora.</strong><div class="trade-sim-meta">${escapeHtml(message)}</div></div>`; }

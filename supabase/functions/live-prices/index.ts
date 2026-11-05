@@ -1,7 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 const CG_BASE="https://api.coingecko.com/api/v3/simple/price";
 const CMC_HISTORY_BASE="https://api.coinmarketcap.com/data-api/v3.1/cryptocurrency/historical";
-const ALLOWED_IDS=new Set(["cardano","midnight-3","snek","solana","bonk","dogwifcoin","bitcoin","ethereum","tether","usd-coin"]);
 const corsHeaders={"Access-Control-Allow-Origin":"*","Access-Control-Allow-Headers":"authorization, x-client-info, apikey, content-type","Access-Control-Allow-Methods":"GET, OPTIONS","Content-Type":"application/json"};
 function json(data:unknown,status=200){return new Response(JSON.stringify(data),{status,headers:{...corsHeaders,"Cache-Control":"no-store"}});}
 function validPublishableKey(req:Request){const supplied=req.headers.get("apikey")||"";if(!supplied)return false;try{const keys=JSON.parse(Deno.env.get("SUPABASE_PUBLISHABLE_KEYS")||"{}");return Object.values(keys).includes(supplied);}catch{return false;}}
@@ -27,7 +26,20 @@ Deno.serve(async(req:Request)=>{
   const ids=String(url.searchParams.get("ids")||"").split(",").map(x=>x.trim()).filter(Boolean);
   const vs=String(url.searchParams.get("vs_currencies")||"usd").toLowerCase();
   if(!ids.length||ids.length>6||vs!=="usd")return json({error:"Invalid quote request"},400);
-  if(ids.some(id=>!ALLOWED_IDS.has(id)))return json({error:"Asset not allowed"},400);
+  // Validate against the live Supabase catalog so newly added, enabled assets
+  // become eligible without a code deployment or hard-coded CoinGecko allowlist.
+  const supabaseUrl=Deno.env.get("SUPABASE_URL")||"";
+  const serviceRoleKey=Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")||"";
+  if(!supabaseUrl||!serviceRoleKey)return json({error:"Asset catalog validation is not configured"},503);
+  const catalogUrl=new URL("/rest/v1/arbitrage_assets",supabaseUrl);
+  catalogUrl.searchParams.set("select","coingecko_id");
+  catalogUrl.searchParams.set("enabled","eq.true");
+  catalogUrl.searchParams.set("type","eq.CRYPTO");
+  const catalogResponse=await fetch(catalogUrl.toString(),{headers:{apikey:serviceRoleKey,Authorization:"Bearer "+serviceRoleKey,Accept:"application/json"}});
+  if(!catalogResponse.ok)return json({error:"Unable to validate asset catalog",catalog_status:catalogResponse.status},503);
+  const catalog=await catalogResponse.json();
+  const allowedIds=new Set(Array.isArray(catalog)?catalog.map((asset:{coingecko_id?:string})=>String(asset.coingecko_id||"").trim()).filter(Boolean):[]);
+  if(ids.some(id=>!allowedIds.has(id)))return json({error:"Asset not enabled or not registered in catalog"},400);
   const upstream=await fetch(`${CG_BASE}?ids=${encodeURIComponent(ids.join(","))}&vs_currencies=usd`,{headers:{Accept:"application/json"}});
   const raw=await upstream.text();
   if(!upstream.ok)return json({error:"CoinGecko unavailable",upstream_status:upstream.status},502);
