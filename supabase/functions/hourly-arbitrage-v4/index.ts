@@ -15,6 +15,13 @@ const ratio = (p: any, a: string, b: string) => Number.isFinite(p[a]) && Number.
 const signal = (z: number) => z <= -Z ? "BUY" : z >= Z ? "SELL" : "HOLD";
 const profitLevel = (profit: number, old: number | null) => { if (profit < -1e-12) return null; const level = Math.floor((profit + 1e-12) / OPPORTUNITY_STEP) * OPPORTUNITY_STEP; return level > (old ?? -OPPORTUNITY_STEP) + 1e-12 ? Number(level.toFixed(10)) : null; };
 const hour = () => { const d = new Date(); d.setUTCMinutes(0, 0, 0); return d.toISOString(); };
+function brtHistoryInstant(date: string, time = "21:00"): string | null {
+  const day = String(date || "").slice(0, 10);
+  const clock = String(time || "21:00").slice(0, 5);
+  if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(day) || !/^(?:[01]\\d|2[0-3]):[0-5]\\d$/.test(clock)) return null;
+  const parsed = new Date(day + "T" + clock + ":00-03:00");
+  return Number.isFinite(parsed.getTime()) ? parsed.toISOString() : null;
+}
 const signedPct = (v: number | null | undefined) => Number.isFinite(v) ? `${Number(v) >= 0 ? "+" : ""}${(Number(v) * 100).toFixed(1)}%` : "—";
 const zfmt = (v: number | null | undefined) => Number.isFinite(v) ? Number(v).toFixed(2) : "—";
 const numfmt = (v: number | null | undefined) => Number.isFinite(v) ? Number(v).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 8 }) : "—";
@@ -105,7 +112,32 @@ function subjectFor(t: string, row?: any) {
 async function sendEmail(row: any) { if (!RESEND_KEY) throw Error("RESEND_API_KEY is not configured"); const payload = { from: EMAIL_FROM, to: [EMAIL_TO], subject: row.email_subject || subjectFor(row.event_type, row), text: row.message, html: htmlFor(row.message) }; const r = await fetch("https://api.resend.com/emails", { method: "POST", headers: { Authorization: `Bearer ${RESEND_KEY}`, "Content-Type": "application/json", "Idempotency-Key": `arbitrage/${row.id}` }, body: JSON.stringify(payload) }); const b = await r.json().catch(() => ({})); if (!r.ok) throw Error(`Resend ${r.status}: ${b?.message ?? JSON.stringify(b)}`); return String(b?.id ?? ""); }
 async function deliverPending() { const since = new Date(Date.now() - 86400000).toISOString(); const { data, error } = await db.from("hourly_arbitrage_message_preview").select("id,event_type,email_subject,message,evaluated_at").in("email_status", ["pending", "failed"]).gte("evaluated_at", since).order("evaluated_at", { ascending: true }).limit(50); if (error) throw error; let sent = 0, failed = 0; for (const row of data ?? []) { try { const id = await sendEmail(row); const { error: e } = await db.from("hourly_arbitrage_message_preview").update({ email_status: "sent", email_sent_at: new Date().toISOString(), email_provider_id: id || null, email_error: null }).eq("id", row.id); if (e) throw e; sent++; } catch (e) { failed++; await db.from("hourly_arbitrage_message_preview").update({ email_status: "failed", email_error: e instanceof Error ? e.message : String(e) }).eq("id", row.id); } } return { sent, failed }; }
 async function auth(req: Request) { const secret = req.headers.get("x-cron-secret")?.trim() || ""; if (secret) { const { data } = await db.from("hourly_arbitrage_scheduler_config").select("cron_secret").eq("id", 1).maybeSingle(); if (data?.cron_secret === secret) return { service: true, userId: null as string | null }; } const m = (req.headers.get("authorization") || "").match(/^Bearer\s+(.+)$/i); if (!m) return { service: false, userId: null as string | null }; const pub = Deno.env.get("SUPABASE_ANON_KEY") || ""; if (!pub) return { service: false, userId: null as string | null }; const c = createClient(URL, pub, { global: { headers: { Authorization: `Bearer ${m[1]}` } }, auth: { persistSession: false, autoRefreshToken: false } }); const { data, error } = await c.auth.getUser(m[1]); return { service: false, userId: error || !data.user ? null : data.user.id }; }
-async function hist() { const r = await fetch(HISTORY, { headers: { Accept: "text/csv" } }); if (!r.ok) throw Error(`history fetch failed: ${r.status}`); const ls = (await r.text()).trim().split(/\r?\n/), h = ls[0].split(",").map(x => x.trim().toLowerCase()); if (h.includes("symbol") && h.includes("price")) { const di = h.indexOf("date"), ti = h.indexOf("time"), si = h.indexOf("symbol"), pi = h.indexOf("price"), fi = h.indexOf("fiat"), m = new Map<string, any>(); for (const line of ls.slice(1)) { const c = line.split(","), sym = String(c[si] || "").toUpperCase(), v = Number(c[pi]); if (!sym || !Number.isFinite(v)) continue; const d = String(c[di] || ""); if (!d) continue; const tm = ti >= 0 ? String(c[ti] || "") : "00:00", fiat = fi >= 0 ? String(c[fi] || "USD") : "USD"; if (fiat.toUpperCase() !== "USD") continue; const key = `${d}T${tm}:00.000Z`; if (!m.has(key)) m.set(key, { date: key, prices: {} }); m.get(key).prices[sym] = v; } return [...m.values()].sort((a, b) => a.date.localeCompare(b.date)); } return []; }
+async function hist(asOf: string = hour()) {
+  const r = await fetch(HISTORY, { headers: { Accept: "text/csv" } });
+  if (!r.ok) throw Error("history fetch failed: " + r.status);
+  const ls = (await r.text()).trim().split(/\\r?\\n/);
+  const h = ls[0].split(",").map(x => x.trim().toLowerCase());
+  if (!h.includes("date") || !h.includes("symbol") || !h.includes("price")) {
+    throw Error("history CSV is missing required date/symbol/price columns");
+  }
+  const di = h.indexOf("date"), ti = h.indexOf("time"), si = h.indexOf("symbol");
+  const pi = h.indexOf("price"), fi = h.indexOf("fiat"), m = new Map<string, any>();
+  for (const line of ls.slice(1)) {
+    const c = line.split(",");
+    const sym = String(c[si] || "").toUpperCase(), v = Number(c[pi]);
+    if (!sym || !Number.isFinite(v) || v <= 0) continue;
+    const d = String(c[di] || "");
+    if (!d) continue;
+    const tm = ti >= 0 ? String(c[ti] || "21:00") : "21:00";
+    const fiat = fi >= 0 ? String(c[fi] || "USD") : "USD";
+    if (fiat.toUpperCase() !== "USD") continue;
+    const key = brtHistoryInstant(d, tm);
+    if (!key || key > asOf) continue;
+    if (!m.has(key)) m.set(key, { date: key, prices: {} });
+    m.get(key).prices[sym] = v;
+  }
+  return [...m.values()].sort((a, b) => a.date.localeCompare(b.date));
+}
 async function quotes(symbols: string[], assetRows: any[]) {
   const idsBySymbol = new Map<string, string>();
   for (const row of assetRows || []) {
@@ -126,27 +158,76 @@ async function quotes(symbols: string[], assetRows: any[]) {
   }
   return prices;
 }
-function mergeHistory(baseRows: any[], supplementalRows: any[]) {
+function mergeHistory(baseRows: any[], supplementalRows: any[], asOf: string) {
   const points = new Map<string, any>();
-  // Supplemental rows are loaded first; the official data.csv values override
-  // them when the same asset and timestamp exist in both sources.
+  // Supplemental rows are loaded first; official data.csv values override matching keys.
+  // Both sources store their date/time in America/Sao_Paulo, not UTC.
   for (const row of supplementalRows || []) {
     const day = String(row.date || "");
     const time = String(row.time || "21:00").slice(0, 5);
     const symbol = String(row.symbol || "").toUpperCase();
     const price = Number(row.price);
     if (!day || !symbol || !Number.isFinite(price) || price <= 0) continue;
-    const key = `${day}T${time}:00.000Z`;
+    const key = brtHistoryInstant(day, time);
+    if (!key || key > asOf) continue;
     if (!points.has(key)) points.set(key, { date: key, prices: {} });
     points.get(key).prices[symbol] = price;
   }
   for (const row of baseRows || []) {
-    const key = String(row.date || "");
-    if (!key) continue;
+    const rawDate = String(row.date || "");
+    const parsed = new Date(rawDate);
+    if (!Number.isFinite(parsed.getTime())) continue;
+    const key = parsed.toISOString();
+    if (key > asOf) continue;
     if (!points.has(key)) points.set(key, { date: key, prices: {} });
     Object.assign(points.get(key).prices, row.prices || {});
   }
   return [...points.values()].sort((a, b) => a.date.localeCompare(b.date));
+}
+async function loadSupplementalHistory(users: string[], symbols: string[]) {
+  const pageSize = 500;
+  const rows: any[] = [];
+  const seen = new Set<string>();
+  let offset = 0, expectedCount: number | null = null, pages = 0;
+  if (!users.length || !symbols.length) {
+    return { rows, expectedCount: 0, pages, pageSize };
+  }
+  while (true) {
+    const { data, error, count } = await db.from("arbitrage_asset_price_history")
+      .select("user_id,symbol,date,time,fiat,price", { count: "exact" })
+      .in("user_id", users)
+      .in("symbol", symbols)
+      .eq("fiat", "USD")
+      .order("user_id", { ascending: true })
+      .order("symbol", { ascending: true })
+      .order("date", { ascending: true })
+      .order("time", { ascending: true })
+      .range(offset, offset + pageSize - 1);
+    if (error) throw error;
+    if (!Number.isInteger(count)) throw Error("Could not verify the exact supplemental history row count.");
+    if (expectedCount === null) expectedCount = Number(count);
+    else if (Number(count) !== expectedCount) {
+      throw Error("Supplemental history changed while paging; refusing to calculate from an inconsistent read.");
+    }
+    const page = data || [];
+    pages++;
+    for (const row of page) {
+      const key = [row.user_id, row.symbol, row.date, row.time, row.fiat].join("|");
+      if (seen.has(key)) throw Error("Duplicate supplemental history row detected while paging.");
+      seen.add(key);
+      rows.push(row);
+    }
+    offset += page.length;
+    if (offset >= expectedCount) break;
+    if (!page.length || page.length < pageSize) {
+      throw Error("Supplemental history pagination ended before all expected rows were loaded.");
+    }
+    if (pages > 10000) throw Error("Supplemental history exceeded the safe pagination limit.");
+  }
+  if (rows.length !== expectedCount) {
+    throw Error("Supplemental history is incomplete: expected " + expectedCount + " rows, received " + rows.length + ".");
+  }
+  return { rows, expectedCount, pages, pageSize };
 }
 async function openTrades(uid: string | null) { let q = db.from("trades").select("id,user_id,arbitrage_id,arbitrage_name,anchor_symbol,strategy,opened_at,initial_anchor_amount,current_asset,current_quantity,entry_ratio_anchor_per_asset,entry_anchor_amount").is("closed_at", null); if (uid) q = q.eq("user_id", uid); const { data, error } = await q; if (error) throw error; return data || []; }
 async function userIdsForService() {
@@ -175,7 +256,7 @@ Deno.serve(async req => {
     const users = a.service ? (requested ? [requested] : await userIdsForService()) : [a.userId!];
     const at = hour();
     const [hs, configResult, assetResult, allTrades] = await Promise.all([
-      hist(),
+      hist(at),
       db.from("arbitrage_configurations")
         .select("id,user_id,name,anchor_symbol,comparative_symbols,default_lookback_days,auto_monitoring_enabled")
         .in("user_id", users)
@@ -197,37 +278,41 @@ Deno.serve(async req => {
       requiredSymbols.add(String(trade.current_asset || "").toUpperCase());
     }
     const prices = await quotes([...requiredSymbols].filter(Boolean), assetResult.data || []);
-    let supplementalRows: any[] = [];
-    if (users.length && requiredSymbols.size) {
-      const { data, error } = await db.from("arbitrage_asset_price_history")
-        .select("user_id,symbol,date,time,fiat,price")
-        .in("user_id", users)
-        .in("symbol", [...requiredSymbols])
-        .eq("fiat", "USD");
-      if (error) throw error;
-      supplementalRows = data || [];
-    }
+    const historyRead = await loadSupplementalHistory(users, [...requiredSymbols]);
+    const supplementalRows: any[] = historyRead.rows;
+
     const historyByUser = new Map(users.map((uid: string) => [
       uid,
-      mergeHistory(hs, supplementalRows.filter((row: any) => row.user_id === uid))
+      mergeHistory(hs, supplementalRows.filter((row: any) => row.user_id === uid), at)
     ]));
     const [st, trs] = await Promise.all([db.from("hourly_arbitrage_state").select("*").in("user_id", users), db.from("hourly_trade_state").select("*").in("user_id", users)]);
     if (st.error) throw st.error; if (trs.error) throw trs.error;
-    const sm = new Map((st.data || []).map((r: any) => [`${r.user_id}|${r.arbitrage_id}|${r.comparative_symbol}`, r])), tm = new Map((trs.data || []).map((r: any) => [`${r.user_id}|${r.trade_id}`, r])), events: any[] = [], obs: any[] = [], su: any[] = [], tu: any[] = [], previews: any[] = [];
+    const sm = new Map((st.data || []).map((r: any) => [`${r.user_id}|${r.arbitrage_id}|${r.comparative_symbol}`, r])), tm = new Map((trs.data || []).map((r: any) => [`${r.user_id}|${r.trade_id}`, r])), events: any[] = [], obs: any[] = [], su: any[] = [], tu: any[] = [], previews: any[] = [], diagnostics: any[] = [];
     for (const uid of users) for (const config of enabledConfigs.filter((item: any) => item.user_id === uid)) {
-      const pts = [...(historyByUser.get(uid) || []).filter((p: any) => p.date !== at), { date: at, prices }];
+      const pts = [...(historyByUser.get(uid) || []).filter((p: any) => p.date !== at), { date: at, prices }].sort((a: any, b: any) => a.date.localeCompare(b.date));
       const arbId = config.id;
       const c = { name: config.name, anchor: String(config.anchor_symbol).toUpperCase(), comparatives: (config.comparative_symbols || []).map((x: string) => String(x).toUpperCase()) };
       const lookback = Number(config.default_lookback_days) || 60;
-      if (![c.anchor, ...c.comparatives].every(symbol => Number.isFinite(prices[symbol]))) continue;
+      const missingCurrent = [c.anchor, ...c.comparatives].filter(symbol => !Number.isFinite(prices[symbol]));
+      if (missingCurrent.length) {
+        for (const asset of c.comparatives) diagnostics.push({ strategy: c.name, anchor: c.anchor, comparative: asset, lookback_days: lookback, status: "skipped", reason: "missing_current_quote", missing_symbols: missingCurrent });
+        continue;
+      }
       for (const asset of c.comparatives) {
-        const rs=pts.map((p:any)=>ratio(p.prices,asset,c.anchor)).filter((x:any)=>x!==null); if(rs.length<lookback) continue;
-        const r=rs.at(-1),w=rs.slice(-lookback),avg=mean(w),stdev=sd(w),zs=stdev===0?0:(r-avg)/stdev,g=avg===0?null:r/avg-1,s=signal(zs),k=`${uid}|${arbId}|${asset}`,prev=sm.get(k),alerted=Boolean(prev?.buy_opportunity_alerted??false);
+        const ratioPoints = pts.map((point: any) => ({ date: point.date, value: ratio(point.prices, asset, c.anchor) })).filter((point: any) => point.value !== null);
+        const rs = ratioPoints.map((point: any) => point.value);
+        const supplementalPairRows = supplementalRows.filter((row: any) => row.user_id === uid && [asset, c.anchor].includes(String(row.symbol || "").toUpperCase())).length;
+        if (rs.length < lookback) {
+          diagnostics.push({ strategy: c.name, anchor: c.anchor, comparative: asset, lookback_days: lookback, supplemental_rows: supplementalPairRows, aligned_observations: rs.length, status: "skipped", reason: "insufficient_history" });
+          continue;
+        }
+        const r = rs.at(-1), w = rs.slice(-lookback), avg = mean(w), stdev = sd(w), zs = stdev === 0 ? 0 : (r - avg) / stdev, g = avg === 0 ? null : r / avg - 1, s = signal(zs), k = uid + "|" + arbId + "|" + asset, prev = sm.get(k), alerted = Boolean(prev?.buy_opportunity_alerted ?? false);
         if(s==="BUY"&&!alerted){
           const type="BUY_OPPORTUNITY",anchorPrice=Number(prices[c.anchor]),tokenPrice=Number(prices[asset]);
           const message=formatMessage({type,comparative_symbol:asset,anchor_symbol:c.anchor,ratio:r,zscore:zs,evaluated_at:at,anchor_price_usd:anchorPrice,token_price_usd:tokenPrice});
           if(message) previews.push({user_id:uid,evaluated_at:at,type,arbitrage_id:arbId,comparative_symbol:asset,trade_id:null,signal:"BUY",gap_pct:g,zscore:zs,profit_pct:null,threshold:null,email_subject:subjectFor(type,{anchor_symbol:c.anchor,comparative_symbol:asset}),message});
         }
+        diagnostics.push({ strategy: c.name, anchor: c.anchor, comparative: asset, lookback_days: lookback, supplemental_rows: supplementalPairRows, aligned_observations: rs.length, window_start: ratioPoints[ratioPoints.length - lookback]?.date ?? null, window_end: ratioPoints.at(-1)?.date ?? null, current_ratio: r, avg, sample_stdev: stdev, zscore: zs, signal: s, alert_decision: s === "BUY" ? (alerted ? "suppressed_already_alerted" : "generated") : "not_buy" });
         const nextAlerted=s==="SELL"?false:s==="BUY"?true:alerted;
         obs.push({user_id:uid,arbitrage_id:arbId,comparative_symbol:asset,anchor_symbol:c.anchor,evaluated_at:at,snapshot_at:at,ratio:r,avg,stdev,zscore:zs,signal:s,gap_pct:g});
         su.push({user_id:uid,arbitrage_id:arbId,comparative_symbol:asset,signal:s,gap_pct:g,zscore:zs,gap_threshold_alerted:null,cycle_started_at:s==="SELL"?at:(prev?.cycle_started_at??(s==="BUY"?at:null)),buy_opportunity_alerted:nextAlerted,evaluated_at:at,updated_at:at});
@@ -254,6 +339,8 @@ Deno.serve(async req => {
     if (tu.length) { const { error } = await db.from("hourly_trade_state").upsert(tu, { onConflict: "user_id,trade_id" }); if (error) throw error; }
     if (previews.length) { const rows = previews.map((p: any) => ({ user_id: p.user_id, evaluated_at: p.evaluated_at, event_type: p.type, arbitrage_id: p.arbitrage_id, comparative_symbol: p.comparative_symbol, trade_id: p.trade_id ?? null, signal: p.signal ?? null, gap_pct: p.gap_pct ?? null, zscore: p.zscore ?? null, profit_pct: p.profit_pct ?? null, threshold: p.threshold ?? null, email_subject: p.email_subject ?? null, message: p.message, email_status: "pending" })); const { error } = await db.from("hourly_arbitrage_message_preview").upsert(rows, { onConflict: "user_id,evaluated_at,event_type,arbitrage_id,comparative_symbol,trade_id", ignoreDuplicates: true }); if (error) throw error; }
     const email = await deliverPending();
-    return json({ ok: true, evaluated_at: at, user_count: users.length, observations: obs.length, state_rows: su.length, trade_state_rows: tu.length, message_previews: previews.length, email_sent: email.sent, email_failed: email.failed, events, current_prices: prices, persisted: true });
+    const diagnosticReport = { history: { expected_rows: historyRead.expectedCount, loaded_rows: supplementalRows.length, pages: historyRead.pages, page_size: historyRead.pageSize, csv_points: hs.length }, strategies: diagnostics, email: { previews_created: previews.length, sent: email.sent, failed: email.failed } };
+    console.info("[hourly-arbitrage-v4] diagnostics " + JSON.stringify({ evaluated_at: at, ...diagnosticReport }));
+    return json({ ok: true, evaluated_at: at, user_count: users.length, observations: obs.length, state_rows: su.length, trade_state_rows: tu.length, message_previews: previews.length, email_sent: email.sent, email_failed: email.failed, diagnostics: diagnosticReport, events, current_prices: prices, persisted: true });
   } catch (e) { console.error(e); return json({ ok: false, error: e instanceof Error ? e.message : String(e) }, 500); }
 });
