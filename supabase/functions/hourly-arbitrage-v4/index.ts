@@ -18,7 +18,7 @@ const hour = () => { const d = new Date(); d.setUTCMinutes(0, 0, 0); return d.to
 function brtHistoryInstant(date: string, time = "21:00"): string | null {
   const day = String(date || "").slice(0, 10);
   const clock = String(time || "21:00").slice(0, 5);
-  if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(day) || !/^(?:[01]\\d|2[0-3]):[0-5]\\d$/.test(clock)) return null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(clock)) return null;
   const parsed = new Date(day + "T" + clock + ":00-03:00");
   return Number.isFinite(parsed.getTime()) ? parsed.toISOString() : null;
 }
@@ -115,7 +115,7 @@ async function auth(req: Request) { const secret = req.headers.get("x-cron-secre
 async function hist(asOf: string = hour()) {
   const r = await fetch(HISTORY, { headers: { Accept: "text/csv" } });
   if (!r.ok) throw Error("history fetch failed: " + r.status);
-  const ls = (await r.text()).trim().split(/\\r?\\n/);
+  const ls = (await r.text()).trim().split(/\r?\n/);
   const h = ls[0].split(",").map(x => x.trim().toLowerCase());
   if (!h.includes("date") || !h.includes("symbol") || !h.includes("price")) {
     throw Error("history CSV is missing required date/symbol/price columns");
