@@ -60,7 +60,7 @@ jobs:
               html = html.replace(old, new)
           tag = '<script src="simulation-display-fix.js?v=20260903-7" defer></script>'
           if tag not in html:
-              html = html.replace('</body>', f'{tag}\\n</body>', 1)
+              html = html.replace('</body>', f'{tag}\n</body>', 1)
           p.write_text(html, encoding='utf-8')
           PY
 
@@ -78,7 +78,7 @@ jobs:
           ]
           for tag in tags:
               if tag not in html:
-                  html = html.replace('</body>', f'{tag}\\n</body>', 1)
+                  html = html.replace('</body>', f'{tag}\n</body>', 1)
           p.write_text(html, encoding='utf-8')
           PY
 
@@ -91,7 +91,7 @@ jobs:
           html = p.read_text(encoding='utf-8')
           tag = '<script src="trades-runtime-guard.js?v=20260903-3" defer></script>'
           if tag not in html:
-              html = html.replace('</body>', f'{tag}\\n</body>', 1)
+              html = html.replace('</body>', f'{tag}\n</body>', 1)
           p.write_text(html, encoding='utf-8')
           PY
 
