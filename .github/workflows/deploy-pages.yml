@@ -9,6 +9,7 @@ on:
   workflow_dispatch:
 
 permissions:
+  actions: read
   contents: read
   pages: write
   id-token: write
@@ -22,6 +23,10 @@ jobs:
     if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    env:
+      # Unique per run AND retry attempt: a rerun cannot collide with an artifact
+      # left behind by the previous attempt.
+      PAGES_ARTIFACT_NAME: github-pages-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -55,7 +60,7 @@ jobs:
               html = html.replace(old, new)
           tag = '<script src="simulation-display-fix.js?v=20260903-7" defer></script>'
           if tag not in html:
-              html = html.replace('</body>', f'{tag}\n</body>', 1)
+              html = html.replace('</body>', f'{tag}\\n</body>', 1)
           p.write_text(html, encoding='utf-8')
           PY
 
@@ -73,7 +78,7 @@ jobs:
           ]
           for tag in tags:
               if tag not in html:
-                  html = html.replace('</body>', f'{tag}\n</body>', 1)
+                  html = html.replace('</body>', f'{tag}\\n</body>', 1)
           p.write_text(html, encoding='utf-8')
           PY
 
@@ -86,7 +91,7 @@ jobs:
           html = p.read_text(encoding='utf-8')
           tag = '<script src="trades-runtime-guard.js?v=20260903-3" defer></script>'
           if tag not in html:
-              html = html.replace('</body>', f'{tag}\n</body>', 1)
+              html = html.replace('</body>', f'{tag}\\n</body>', 1)
           p.write_text(html, encoding='utf-8')
           PY
 
@@ -96,7 +101,34 @@ jobs:
       - name: Upload GitHub Pages artifact
         uses: actions/upload-pages-artifact@v4
         with:
+          name: ${{ env.PAGES_ARTIFACT_NAME }}
           path: dist
+
+      # The Pages artifact can take a moment to appear in the Actions API after
+      # upload-pages-artifact reports success. Poll for this exact attempt's
+      # artifact before deploy-pages queries it.
+      - name: Verify Pages artifact is available
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 12); do
+            count="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/artifacts?per_page=100" --jq "[.artifacts[] | select(.name == \"${PAGES_ARTIFACT_NAME}\" and .expired == false)] | length")"
+            if [ "$count" -eq 1 ]; then
+              echo "Confirmed exactly one Pages artifact: ${PAGES_ARTIFACT_NAME}"
+              exit 0
+            fi
+            if [ "$count" -gt 1 ]; then
+              echo "Unexpected duplicate Pages artifacts for this run attempt." >&2
+              exit 1
+            fi
+            echo "Pages artifact not visible yet (check ${attempt}/12); waiting 5 seconds."
+            sleep 5
+          done
+          echo "Pages artifact did not become visible within 60 seconds." >&2
+          exit 1
 
       - name: Deploy GitHub Pages
         uses: actions/deploy-pages@v4
+        with:
+          artifact_name: ${{ env.PAGES_ARTIFACT_NAME }}
